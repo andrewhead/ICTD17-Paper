@@ -25,7 +25,7 @@ def load_labels(csv_filename, test_indexes, num_classes=3):
             index = int(row[0])
             if index not in test_indexes:
                 labels.append(row[6])
-    label_vector = np.array(labels[:1000])
+    label_vector = np.array(labels)
     label_array = keras.utils.to_categorical(label_vector, num_classes)
     return label_array
 
@@ -70,7 +70,7 @@ def load_images(image_paths, verbose=False):
     return X
 
 
-def train(X, y, num_classes=3, batch_size=16, epochs=12, kfolds=3, verbose=False):
+def train(image_paths, y, num_classes=3, batch_size=32, epochs=12, kfolds=3, verbose=False):
 
     # Load baseline model (ImageNet)
     if verbose:
@@ -109,48 +109,98 @@ def train(X, y, num_classes=3, batch_size=16, epochs=12, kfolds=3, verbose=False
         print("done.")
 
     # Shuffle the images and labels
-    index_order = np.array(list(range(len(X))))
+    index_order = np.array(list(range(len(image_paths))))
     np.random.shuffle(index_order)
-    X_shuffled = np.zeros(X.shape, dtype=K.floatx())
+    # X_shuffled = np.zeros(X.shape, dtype=K.floatx())
+    image_paths_shuffled = np.zeros((len(image_paths),), dtype=object)
     y_shuffled = np.zeros(y.shape, dtype=K.floatx())
     for new_index, old_index in enumerate(index_order, start=0):
-        X_shuffled[new_index] = X[old_index]
+        image_paths_shuffled[new_index] = image_paths[old_index]
+        # X_shuffled[new_index] = X[old_index]
         y_shuffled[new_index] = y[old_index]
+
+    image_paths = image_paths_shuffled
+    y = y_shuffled
 
     # Train the model
     for fold_index in range(kfolds):
 
-        fold_size = math.ceil(len(X) / kfolds)
+        # fold_size = math.ceil(len(X) / kfolds)
+        fold_size = math.ceil(len(image_paths) / kfolds)
         val_fold_start = fold_size * fold_index
         val_fold_end = fold_size * (fold_index + 1)
 
         # Get the validation set
         # Using a trick from http://stackoverflow.com/questions/25330959/
-        val_mask = np.zeros(len(X), np.bool)
+        # val_mask = np.zeros(len(X), np.bool)
+        val_mask = np.zeros(len(image_paths), np.bool)
         val_mask[val_fold_start:val_fold_end] = 1
-        X_val = X[val_mask]
+        # X_val = X[val_mask]
+        image_paths_val = image_paths[val_mask]
         y_val = y[val_mask]
 
         # Get the training set
         train_mask = np.invert(val_mask)
-        X_train = X[train_mask]
+        # X_train = X[train_mask]
+        image_paths_train = image_paths[train_mask]
         y_train = y[train_mask]
 
         if verbose:
             print("Training on fold %d of %d" % (fold_index + 1, kfolds))
-            print("Training set size: %d" % (len(X_train)))
-            print("Validation set size: %d" % (len(X_val)))
+            # print("Training set size: %d" % (len(X_train)))
+            print("Training set size: %d" % (len(image_paths_train)))
+            # print("Validation set size: %d" % (len(X_val)))
+            print("Validation set size: %d" % (len(image_paths_val)))
+
+        class Generator(object):
+
+            def __init__(self, image_paths, labels, batch_size=32):
+                self.index = 0
+                self.image_paths = image_paths
+                self.labels = labels
+                self.batch_size = batch_size
+
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                return self.next()
+
+            def next(self):
+
+                # Retrieve next batch
+                batch_image_paths = self.image_paths[self.index:self.index + self.batch_size]
+                batch_labels = self.labels[self.index:self.index + self.batch_size]
+                batch_images = load_images(batch_image_paths.tolist(), verbose=False)
+
+                # Advance pointer for next batch
+                self.index += batch_size
+                if self.index >= len(self.image_paths):
+                    self.index = 0
+
+                return (batch_images, batch_labels)
 
         if verbose:
             print("Now fitting the model.")
-        model.fit(
-            X_train, y_train,
-            batch_size=batch_size,
+        model.fit_generator(
+            Generator(image_paths_train, y_train),
+            steps_per_epoch=math.ceil(float(len(image_paths_train)) / batch_size),
             epochs=epochs,
             verbose=(1 if verbose else 0),
-            validation_data=(X_val, y_val),
+            validation_data=Generator(image_paths_val, y_val),
+            validation_steps=math.ceil(float(len(image_paths_val)) / batch_size),
         )
-
+        # Classical model fitting doesn't work too well when we have 30,000 images:
+        # the machine runs out of memory.  We use the generator process above
+        # so that only a small number of images is loaded at a time.
+        # model.fit(
+        #    X_train, y_train,
+        #    batch_size=batch_size,
+        #    epochs=epochs,
+        #    verbose=(1 if verbose else 0),
+        #    validation_data=(X_val, y_val),
+        # )
+ 
 
 if __name__ == "__main__":
 
@@ -166,8 +216,8 @@ if __name__ == "__main__":
     args = argument_parser.parse_args()
 
     test_indexes = load_test_indexes(args.test_index_file)
-    image_paths = get_image_paths(args.input_dir, test_indexes)[:1000]
-    X = load_images(image_paths, verbose=args.v)
+    image_paths = get_image_paths(args.input_dir, test_indexes)
+    # X = load_images(image_paths, verbose=args.v)
     y = load_labels(args.csvfile, test_indexes)
 
-    train(X, y, verbose=args.v)
+    train(image_paths, y, verbose=args.v)
