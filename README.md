@@ -9,13 +9,42 @@
 
 On a Google Cloud compute instance:
 
+Install the GPU (instructions based on those from (Google Cloud docs)[https://cloud.google.com/compute/docs/gpus/add-gpus]):
+
 ```bash
-sudo apt-get install git
+echo "Checking for CUDA and installing."
+if ! dpkg-query -W cuda; then
+  # The 16.04 installer works with 16.10.
+  curl -O http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64/cuda-repo-ubuntu1604_8.0.61-1_amd64.deb
+  sudo dpkg -i ./cuda-repo-ubuntu1604_8.0.61-1_amd64.deb
+  sudo apt-get update
+  sudo apt-get install cuda -y
+fi
+```
+
+Add the CudNN library:
+From your main development computer (not Google Cloud), transfer the `deb` that you download from [here](https://developer.nvidia.com/cudnn) (make sure to download version 5.1).
+```bash
+scp -i ~/.ssh/google_compute_engine ~/Downloads/libcudnn6_6.0.20-1+cuda8.0_amd64.deb  andrew@35.185.45.28:/home/andrew/
+```
+
+Then from the compute machine, install it with `dpkg`:
+```bash
+sudo dkpg -i libcudnn6_6.0.20-1+cuda8.0_amd64.deb
+```
+
+Then do other project dependencies:
+
+```bash
+# sudo apt-get install git
 git clone <link to this repository>
 
-sudo easy_install pip
-sudo pip install virtualenv
+# sudo easy_install pip
+sudo apt-get update
+sudo apt-get install python-pip --fix-missing
+pip install virtualenv
 
+cd DiiD-Predictor
 virtualenv venv -p python3
 source venv/bin/activate
 pip install -r requirements.txt
@@ -24,6 +53,7 @@ pip install -r requirements.txt
 ## Get images for a country
 
 ```bash
+mkdir images
 cd images/
 gsutil -m cp -r gs://diid/Rwanda .
 ```
@@ -31,6 +61,7 @@ gsutil -m cp -r gs://diid/Rwanda .
 ## Preprocess images to have the expected indexes
 
 *Note*: The `rwanda_TL.csv` file comes will have to be uploaded securely (it's protected data).
+Before doing this, create a `csv` directory in the `DiiD-Predictor` directory.
 For uploading this file with `scp`, see related instructions for connecting over `ssh` (here)[https://cloud.google.com/compute/docs/instances/connecting-to-instance#standardssh].
 Then, run the `copy_images.py` script.
 
