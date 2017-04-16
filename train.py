@@ -1,7 +1,9 @@
 import keras
+from keras import backend as K
+from keras.models import Model
+from keras.layers import Dense
 from keras.preprocessing import image
 from keras_models.vgg16 import VGG16
-from keras import backend as K
 
 import numpy as np
 
@@ -11,7 +13,7 @@ from argparse import ArgumentParser
 import os.path
 
 
-def load_labels(csv_filename, test_indexes):
+def load_labels(csv_filename, test_indexes, num_classes=3):
     labels = []
     with open(csv_filename) as csvfile:
         rows = csv.reader(csvfile)
@@ -23,7 +25,9 @@ def load_labels(csv_filename, test_indexes):
             index = int(row[0])
             if index not in test_indexes:
                 labels.append(row[6])
-    return np.array(labels[:1000])
+    label_vector = np.array(labels[:1000])
+    label_array = keras.utils.to_categorical(label_vector, num_classes)
+    return label_array
 
 
 def load_test_indexes(test_index_filename):
@@ -66,12 +70,29 @@ def load_images(image_paths, verbose=False):
     return X
 
 
-def train(X, y, batch_size=16, epochs=12, kfolds=3, verbose=False):
+def train(X, y, num_classes=3, batch_size=16, epochs=12, kfolds=3, verbose=False):
 
     # Load baseline model (ImageNet)
     if verbose:
         print("Loading ImageNet model...", end="")
     model = VGG16()
+    if verbose:
+        print("done.")
+
+    if verbose:
+        print("Adding new final layer...", end="")
+
+    # Remove previous classification layer
+    model.layers.pop()
+
+    # Create new classification layer
+    last_feature_layer = model.layers[-1].output
+    new_classification_layer = Dense(
+        num_classes, activation='softmax', name='predictions')(last_feature_layer)
+
+    # Name this to be a new model
+    input_ = model.input
+    model = Model(input_, new_classification_layer)
     if verbose:
         print("done.")
 
@@ -120,21 +141,14 @@ def train(X, y, batch_size=16, epochs=12, kfolds=3, verbose=False):
             print("Training set size: %d" % (len(X_train)))
             print("Validation set size: %d" % (len(X_val)))
 
-        val_tuples = []
-        for index, label in enumerate(y_val, start=0):
-            val_tuples.append((X_val[index], y_val[index],))
-
-        print(X_train.shape)
-        print(X_val.shape)
-        print(y_train.shape)
-        print(y_val.shape)
-
+        if verbose:
+            print("Now fitting the model.")
         model.fit(
             X_train, y_train,
             batch_size=batch_size,
             epochs=epochs,
             verbose=(1 if verbose else 0),
-            validation_data=val_tuples,
+            validation_data=(X_val, y_val),
         )
 
 
