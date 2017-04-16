@@ -41,7 +41,7 @@ python copy_images.py csv/rwanda_TL.csv --output-dir images/Rwanda_simple/
 ## Split into the test set
 
 ```bash
-python util/get_test_indexes.py images/Rwanda_simple/ 0.1
+python util/get_test_indexes.py images/Rwanda_simple/ 0.1 > indexes/Rwanda_test_indexes.txt
 ```
 
 ## Train!
