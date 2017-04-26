@@ -1,9 +1,12 @@
 import keras
 from keras import backend as K
 from keras.models import Model
-from keras.layers import Dense
+from keras.layers import Activation, Dense, Dropout, Flatten, Reshape
+from keras.layers.convolutional import Conv2D
+from keras.layers.pooling import AveragePooling2D
 from keras.preprocessing import image
 from keras_models.vgg16 import VGG16
+from keras.optimizers import SGD
 
 import numpy as np
 
@@ -11,6 +14,7 @@ import math
 import csv
 from argparse import ArgumentParser
 import os.path
+from time import gmtime, strftime
 
 
 def load_labels(csv_filename, test_indexes, num_classes=3):
@@ -50,15 +54,15 @@ def get_image_paths(input_dir, test_image_indexes):
 
 def load_images(image_paths, verbose=False):
 
-    WIDTH = 224
-    HEIGHT = 224
+    WIDTH = 400
+    HEIGHT = 400
 
     if verbose:
         print("Loading images...")
 
     X = np.zeros((len(image_paths), WIDTH, HEIGHT, 3))
     for img_index, img_path in enumerate(image_paths, start=0):
-        img = image.load_img(img_path, target_size=(WIDTH, HEIGHT))
+        img = image.load_img(img_path)
         img_array = image.img_to_array(img)
         X[img_index, :, :, :] = img_array
         if verbose and img_index > 0 and (img_index % 1000) == 0:
@@ -75,34 +79,82 @@ def train(image_paths, y, num_classes=3, batch_size=32, epochs=12, kfolds=3, ver
     # Load baseline model (ImageNet)
     if verbose:
         print("Loading ImageNet model...", end="")
-    model = VGG16()
+    model = VGG16(
+        # Initialize with ImageNet weights
+        weights="imagenet",
+        # Continue training on 400x400 images.  We'll have to update the final
+        # layers of the model to be fully convolutional.
+        include_top=False,
+        input_shape=(400, 400, 3),
+    )
     if verbose:
         print("done.")
 
     if verbose:
-        print("Adding new final layer...", end="")
+        print("Updating final layers...", end="")
 
-    # Remove previous classification layer
-    model.layers.pop()
+    # Add new fully convolutional "top" to the model
+    # To the best of my ability, this follows the architecture published in
+    # the GitHub repository of Neal Jean:
+    # https://github.com/nealjean/predicting-poverty/blob/1b072cc418116332abfeea59fea095eaedc15d9a/model/predicting_poverty_deploy.prototxt
+    # However, note that the VGG architecture that we initially load
+    # varies from that described in Neal's `prototxt` file, even though we
+    # try to make sure that the top layers are identical.
+    layer = model.layers[-1].output
+    layer = Dropout(0.5, name="conv6_dropout")(layer)
+    layer = Conv2D(
+        filters=4096,
+        kernel_size=(6, 6),
+        strides=6,
+        activation='relu',
+        name="conv6",
+        kernel_initializer=keras.initializers.glorot_normal(),
+        bias_initializer=keras.initializers.Constant(value=0.1),
+    )(layer)
+    layer = Dropout(0.5, name="conv7_dropout")(layer)
+    layer = Conv2D(
+        filters=4096,
+        kernel_size=(1, 1),
+        strides=1,
+        activation='relu',
+        name="conv7",
+        kernel_initializer=keras.initializers.glorot_normal(),
+        bias_initializer=keras.initializers.Constant(value=0.1),
+    )(layer)
+    layer = Dropout(0.5, name="conv8_dropout")(layer)
+    layer = Conv2D(
+        filters=3,
+        kernel_size=(1, 1),
+        strides=1,
+        name="conv8",
+        kernel_initializer=keras.initializers.glorot_normal(),
+        bias_initializer=keras.initializers.Constant(value=0.1),
+    )(layer)
+    layer = AveragePooling2D(
+        pool_size=(2, 2),
+        strides=1,
+        name="predictions_pooling"
+    )(layer)
+    # XXX: I'm not sure this is correct (Neal's model may have created
+    # a softmax for each pool individually) but it's good enough for now.
+    layer = Flatten(name="predictions_flatten")(layer)
+    layer = Dense(num_classes, name="predictions_dense")(layer)
+    layer = Activation('softmax', name="predictions")(layer)
 
-    # Create new classification layer
-    last_feature_layer = model.layers[-1].output
-    new_classification_layer = Dense(
-        num_classes, activation='softmax', name='predictions')(last_feature_layer)
-
-    # Name this to be a new model
-    input_ = model.input
-    model = Model(input_, new_classification_layer)
+    # Reset the model with the new top
+    model = Model(model.input, layer)
     if verbose:
         print("done.")
 
-    # XXX: This is using the same compilation parameters as the
-    # Keras MNIST example, which might not be appropriate.
     if verbose:
         print("Compiling model...", end="")
+    # The `loss` came from the MNIST example (may be incorrect)
+    # and the learning rate came from the Xie et al. paper,
+    # "Transfer learning from deep features for remote sening and 
+    # poverty mapping".
     model.compile(
         loss=keras.losses.categorical_crossentropy,
-        optimizer=keras.optimizers.Adadelta(),
+        optimizer=SGD(lr=1e-6),
         metrics=['accuracy']
     )
     if verbose:
@@ -116,7 +168,6 @@ def train(image_paths, y, num_classes=3, batch_size=32, epochs=12, kfolds=3, ver
     y_shuffled = np.zeros(y.shape, dtype=K.floatx())
     for new_index, old_index in enumerate(index_order, start=0):
         image_paths_shuffled[new_index] = image_paths[old_index]
-        # X_shuffled[new_index] = X[old_index]
         y_shuffled[new_index] = y[old_index]
 
     image_paths = image_paths_shuffled
@@ -132,24 +183,19 @@ def train(image_paths, y, num_classes=3, batch_size=32, epochs=12, kfolds=3, ver
 
         # Get the validation set
         # Using a trick from http://stackoverflow.com/questions/25330959/
-        # val_mask = np.zeros(len(X), np.bool)
         val_mask = np.zeros(len(image_paths), np.bool)
         val_mask[val_fold_start:val_fold_end] = 1
-        # X_val = X[val_mask]
         image_paths_val = image_paths[val_mask]
         y_val = y[val_mask]
 
         # Get the training set
         train_mask = np.invert(val_mask)
-        # X_train = X[train_mask]
         image_paths_train = image_paths[train_mask]
         y_train = y[train_mask]
 
         if verbose:
             print("Training on fold %d of %d" % (fold_index + 1, kfolds))
-            # print("Training set size: %d" % (len(X_train)))
             print("Training set size: %d" % (len(image_paths_train)))
-            # print("Validation set size: %d" % (len(X_val)))
             print("Validation set size: %d" % (len(image_paths_val)))
 
         class Generator(object):
@@ -190,16 +236,9 @@ def train(image_paths, y, num_classes=3, batch_size=32, epochs=12, kfolds=3, ver
             validation_data=Generator(image_paths_val, y_val),
             validation_steps=math.ceil(float(len(image_paths_val)) / batch_size),
         )
-        # Classical model fitting doesn't work too well when we have 30,000 images:
-        # the machine runs out of memory.  We use the generator process above
-        # so that only a small number of images is loaded at a time.
-        # model.fit(
-        #    X_train, y_train,
-        #    batch_size=batch_size,
-        #    epochs=epochs,
-        #    verbose=(1 if verbose else 0),
-        #    validation_data=(X_val, y_val),
-        # )
+
+        # Save the model after each fold
+        model.save("model-" + strftime("%Y%m%d-%H%M%S", gmtime()) + ".h5")
  
 
 if __name__ == "__main__":
@@ -217,7 +256,6 @@ if __name__ == "__main__":
 
     test_indexes = load_test_indexes(args.test_index_file)
     image_paths = get_image_paths(args.input_dir, test_indexes)
-    # X = load_images(image_paths, verbose=args.v)
     y = load_labels(args.csvfile, test_indexes)
 
     train(image_paths, y, verbose=args.v)
