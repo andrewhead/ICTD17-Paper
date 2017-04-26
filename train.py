@@ -74,7 +74,37 @@ def load_images(image_paths, verbose=False):
     return X
 
 
-def train(image_paths, y, num_classes=3, batch_size=32, epochs=12, kfolds=3, verbose=False):
+# Written using the guidance from this Stack Overflow post:
+# http://stackoverflow.com/questions/41458859/keras-custom-metric-for-single-class-accuracy/41717938
+def per_class_recall(class_id):
+
+    def compute_recall(y_true, y_pred):
+        true_classes = K.argmax(y_true, axis=-1)
+        pred_classes = K.argmax(y_pred, axis=-1)
+        recall_mask = K.cast(K.equal(true_classes, class_id), 'int32')
+        classes_matching_target = K.cast(K.equal(true_classes, pred_classes), 'int32') * recall_mask
+        recall = K.sum(classes_matching_target) / K.maximum(K.sum(recall_mask), 1)
+        return recall
+    
+    # XXX: We use this hack of renaming the metric because Keras only shows the metrics
+    # for a function with one name once (won't show this metric for 3 classes otherwise),
+    # and this also makes the output look prettier.
+    compute_recall.__name__ = "recall (C%d)" % class_id
+    return compute_recall
+
+
+def per_class_count_expected(class_id, batch_size):
+
+    def compute_count_expected(y_true, y_pred):
+        true_classes = K.argmax(y_true, axis=-1)
+        expected_mask = K.cast(K.equal(true_classes, class_id), 'int32')
+        return K.sum(expected_mask) / batch_size
+
+    compute_count_expected.__name__ = "%% examples (C%d)" % class_id
+    return compute_count_expected
+
+
+def train(image_paths, y, num_classes=3, batch_size=32, epochs=10, kfolds=3, verbose=False):
 
     # Load baseline model (ImageNet)
     if verbose:
@@ -152,10 +182,14 @@ def train(image_paths, y, num_classes=3, batch_size=32, epochs=12, kfolds=3, ver
     # and the learning rate came from the Xie et al. paper,
     # "Transfer learning from deep features for remote sening and 
     # poverty mapping".
+    metrics = ['accuracy']
+    for class_index in range(num_classes):
+        metrics.append(per_class_recall(class_index))
+        metrics.append(per_class_count_expected(class_index, batch_size))
     model.compile(
         loss=keras.losses.categorical_crossentropy,
         optimizer=SGD(lr=1e-6),
-        metrics=['accuracy']
+        metrics=metrics,
     )
     if verbose:
         print("done.")
