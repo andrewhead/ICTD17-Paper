@@ -2,6 +2,7 @@ from keras import backend as K
 from keras.models import load_model, Model
 from keras.preprocessing import image
 from keras.utils.generic_utils import get_custom_objects
+from keras_models.vgg16 import VGG16
 import numpy as np
 
 import math
@@ -57,8 +58,12 @@ def extract_features(model_path, image_dir, layer_name, output_dir,
     custom_objects.update({"% examples (C2)": lambda x, y: K.constant(0)})
 
     # Create a model that only outputs the requested layer
-    print("Loading model...", end="")
-    model = load_model(model_path)
+    if model_path:
+        print("Loading model %s..." % (model_path), end="")
+        model = load_model(model_path)
+    else:
+        print("Loading VGG16", end="")
+        model = VGG16(weights='imagenet', include_top=False)
     print("done.")
     print("Adjusting model to output feature layer..." , end="")
     feature_layer = model.get_layer(layer_name)
@@ -85,10 +90,10 @@ def extract_features(model_path, image_dir, layer_name, output_dir,
             # It's important to store using `compressed` if you want to save more than
             # a few hundred images.  Without compression, every 1,000 images will take
             # about 1GB of memory, which might not scale well for most datasets
+            # Each record is saved to its own file to enable efficient loading without
+            # needing to load all image features into memory during later training.
             np.savez_compressed(filename(image_index), data=image_features)
             image_index += 1
-        if image_index > 4:
-            break
 
     print("All features have been computed and saved.")
     print("Reload features for each image with: `np.load(<filename>)['data']`")
@@ -100,8 +105,9 @@ if __name__ == '__main__':
         "a neural network model."
         )
     parser.add_argument("image_dir", help="Directory containing all images")
-    parser.add_argument("model", help="H5 file containing model")
     parser.add_argument("layer_name", help="Layer from which to extract features")
+    parser.add_argument("--model", help="H5 file containing model.  If not " +
+        "provided, then features are extracted using VGG16")
     parser.add_argument("--flatten", action="store_true", help=
         "Whether to flatten the extracted features.  This is useful if you " +
         "want to train regression using the extracted features."
