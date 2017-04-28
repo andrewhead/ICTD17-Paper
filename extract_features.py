@@ -62,7 +62,7 @@ def extract_features(model_path, image_dir, layer_name, output_dir,
         print("Loading model %s..." % (model_path), end="")
         model = load_model(model_path)
     else:
-        print("Loading VGG16", end="")
+        print("Loading VGG16...", end="")
         model = VGG16(weights='imagenet', include_top=False)
     print("done.")
     print("Adjusting model to output feature layer..." , end="")
