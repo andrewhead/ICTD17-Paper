@@ -82,3 +82,13 @@ Note that this steps depends on having run the previous steps to have the CSV fi
 ```bash
 python train.py csv/rwanda_TL.csv images/Rwanda_simple/ indexes/Rwanda_test_indexes.txt  -v
 ```
+
+## Extract features from an arbitrary layer of a neural network model
+
+The `--flatten` flag is optional, and it flattens the feature array for each image.  Replace `"block5_conv3"` with the name of the layer you want to extract features for.  You can also set the number of images to process together with the `--batch-size` argument.
+
+```bash
+python extract_features.py images/Rwanda_simple/ \
+  models/rwanda-201704280510.h5 "block5_conv3" \
+  --flatten --output features/rwanda.npz
+```

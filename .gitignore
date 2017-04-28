@@ -4,7 +4,11 @@ venv
 # Compiled Python
 *.pyc
 
+# Intermediate results
+features
+
 # Models
+models
 model-*.h5
 
 # Private data

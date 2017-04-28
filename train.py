@@ -290,7 +290,8 @@ def train(image_paths, y, class_weights, num_classes=3, batch_size=16, epochs=4,
         )
 
         # Save the model after each fold
-        model.save("model-" + strftime("%Y%m%d-%H%M%S", gmtime()) + ".h5")
+        model.save(os.path.join(
+            "models", "model-" + strftime("%Y%m%d-%H%M%S", gmtime()) + ".h5"))
  
 
 if __name__ == "__main__":
