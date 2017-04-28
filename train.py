@@ -17,7 +17,9 @@ import os.path
 from time import gmtime, strftime
 
 
+# This method assumes that all labels are a string representing an integer
 def load_labels(csv_filename, test_indexes, num_classes=3):
+
     labels = []
     with open(csv_filename) as csvfile:
         rows = csv.reader(csvfile)
@@ -31,7 +33,21 @@ def load_labels(csv_filename, test_indexes, num_classes=3):
                 labels.append(row[6])
     label_vector = np.array(labels)
     label_array = keras.utils.to_categorical(label_vector, num_classes)
-    return label_array
+
+    # Compute class weights inversely proportional to class frequency
+    class_counts = {}
+    for label in labels:
+        if label not in class_counts.keys():
+            class_counts[label] = 0
+        class_counts[label] += 1
+    max_class_count = max(class_counts.values())
+    class_weights = {}
+    for (label, class_count) in class_counts.items():
+        # The label in the class weights dictionary needs to be an
+        # integer for Keras to make use of it.
+        class_weights[int(label)] = max_class_count / float(class_count)
+
+    return label_array, class_weights
 
 
 def load_test_indexes(test_index_filename):
@@ -104,7 +120,7 @@ def per_class_count_expected(class_id, batch_size):
     return compute_count_expected
 
 
-def train(image_paths, y, num_classes=3, batch_size=32, epochs=10, kfolds=3, verbose=False):
+def train(image_paths, y, class_weights, num_classes=3, batch_size=16, epochs=4, kfolds=3, verbose=False):
 
     # Load baseline model (ImageNet)
     if verbose:
@@ -234,7 +250,7 @@ def train(image_paths, y, num_classes=3, batch_size=32, epochs=10, kfolds=3, ver
 
         class Generator(object):
 
-            def __init__(self, image_paths, labels, batch_size=32):
+            def __init__(self, image_paths, labels, batch_size=16):
                 self.index = 0
                 self.image_paths = image_paths
                 self.labels = labels
@@ -262,10 +278,12 @@ def train(image_paths, y, num_classes=3, batch_size=32, epochs=10, kfolds=3, ver
 
         if verbose:
             print("Now fitting the model.")
+            print("Using class weights: " + str(class_weights))
         model.fit_generator(
             Generator(image_paths_train, y_train),
             steps_per_epoch=math.ceil(float(len(image_paths_train)) / batch_size),
             epochs=epochs,
+            class_weight=class_weights,
             verbose=(1 if verbose else 0),
             validation_data=Generator(image_paths_val, y_val),
             validation_steps=math.ceil(float(len(image_paths_val)) / batch_size),
@@ -290,6 +308,6 @@ if __name__ == "__main__":
 
     test_indexes = load_test_indexes(args.test_index_file)
     image_paths = get_image_paths(args.input_dir, test_indexes)
-    y = load_labels(args.csvfile, test_indexes)
+    y, class_weights = load_labels(args.csvfile, test_indexes)
 
-    train(image_paths, y, verbose=args.v)
+    train(image_paths, y, class_weights, verbose=args.v)

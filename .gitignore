@@ -1,3 +1,17 @@
-images
-csv
+# Virtual environment
 venv
+
+# Compiled Python
+*.pyc
+
+# Models
+model-*.h5
+
+# Private data
+csv
+
+# Images
+images
+
+# Logs
+nohup.out
