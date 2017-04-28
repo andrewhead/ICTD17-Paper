@@ -43,7 +43,7 @@ def get_features(model, img_paths, batch_size):
     yield StopIteration
 
 
-def extract_features(model_path, image_dir, layer_name, output_filename,
+def extract_features(model_path, image_dir, layer_name, output_dir,
         flatten, batch_size):
 
     # Add records for the custom metrics we attached to the models,
@@ -70,24 +70,28 @@ def extract_features(model_path, image_dir, layer_name, output_filename,
 
     # Compute the features in batches
     print("Now computing features for all batches of images...")
-    feature_batches = tuple()
     expected_batches = math.ceil(len(image_paths) / float(batch_size))
+    filename = lambda image_index: os.path.join(
+        output_dir, str(image_index) + ".npz")
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    image_index = 0
     for feature_batch in tqdm(
             get_features(model, image_paths, batch_size),
             total=expected_batches):
         if flatten:
             feature_batch = feature_batch.reshape(feature_batch.shape[0], -1)
-        feature_batches += (feature_batch,)
-        break
-    all_features = np.concatenate(feature_batches)
+        for image_features in feature_batch:
+            # It's important to store using `compressed` if you want to save more than
+            # a few hundred images.  Without compression, every 1,000 images will take
+            # about 1GB of memory, which might not scale well for most datasets
+            np.savez_compressed(filename(image_index), data=image_features)
+            image_index += 1
+        if image_index > 4:
+            break
 
-    print("Saving features to file...", end="")
-    # It's important to store using `compressed` if you want to save more than
-    # a few hundred images.  Without compression, every 1,000 images will take
-    # about 1GB of memory, which might not scale well for most datasets
-    np.savez_compressed(output_filename, data=all_features)
-    print("done.")
-    print("Reload features array from file with `np.load(<filename>)['data']`")
+    print("All features have been computed and saved.")
+    print("Reload features for each image with: `np.load(<filename>)['data']`")
 
 
 if __name__ == '__main__':
@@ -104,10 +108,10 @@ if __name__ == '__main__':
         )
     parser.add_argument("--batch-size", default=32, help="Number of images to " + 
         "extract features for at a time.", type=int)
-    parser.add_argument("--output", default="features.npz",
+    parser.add_argument("--output-dir", default="features.npz",
         help="Name of file to write features to.")
 
     args = parser.parse_args()
     extract_features(
-        args.model, args.image_dir, args.layer_name, args.output, args.flatten,
-        args.batch_size)
+        args.model, args.image_dir, args.layer_name, args.output_dir, 
+        args.flatten, args.batch_size)

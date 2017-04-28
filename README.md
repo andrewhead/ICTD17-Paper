@@ -90,5 +90,5 @@ The `--flatten` flag is optional, and it flattens the feature array for each ima
 ```bash
 python extract_features.py images/Rwanda_simple/ \
   models/rwanda-201704280510.h5 "block5_conv3" \
-  --flatten --output features/rwanda.npz
+  --flatten --output-dir features/rwanda/
 ```
