@@ -6,6 +6,7 @@ venv
 
 # Intermediate results
 features
+activations
 
 # Models
 models
