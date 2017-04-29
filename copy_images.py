@@ -53,8 +53,8 @@ def move_files(cell_to_index_dict, cell_to_file_dict, output_dir):
 
 if __name__ == "__main__":
     argument_parser = ArgumentParser(description="Rename image files")
+    argument_parser.add_argument("input_dir")
     argument_parser.add_argument("csvfile", help="Name of file with image indexes")
-    argument_parser.add_argument("--input-dir", default="images")
     argument_parser.add_argument("--output-dir", default="images")
     args = argument_parser.parse_args()
     cell_to_index_dict = make_cell_to_index_lookup(args.csvfile)
