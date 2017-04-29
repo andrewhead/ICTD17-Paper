@@ -93,3 +93,21 @@ python extract_features.py \
   "block5_conv3" \
   --output-dir features/rwanda/
 ```
+
+## Getting images that cause activation in later layers
+
+```bash
+python extract_features.py \
+  features/rwanda_vgg16_conv5/
+  conv6
+  --model models/rwanda_vgg16_with_trained_top.h5
+  --input-type=features
+  --batch-size=100
+  --output-dir=features/rwanda_vgg16_with_trained_top_conv6/
+  --flatten
+```
+
+```bash
+python get_activations.py \
+  features/rwanda_vgg16_with_trained_top_conv6/
+```

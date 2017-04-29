@@ -58,7 +58,6 @@ def load_test_indexes(test_index_filename):
     return test_indexes
 
 
-# It's assumed that the input directory contains nothing but the images for training.
 def get_image_paths(input_dir, test_image_indexes):
     image_paths = []
     for filename in os.listdir(input_dir):
