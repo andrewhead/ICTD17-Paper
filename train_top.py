@@ -111,7 +111,7 @@ def get_folds(example_indexes, num_folds=3):
 def make_jean_top(num_classes=3):
 
     model = Sequential()
-    model.add(Dropout(0.5, name="conv6_dropout", input_shape=(25, 25, 512)))
+    model.add(Dropout(0.5, name="conv6_dropout", input_shape=(12, 12, 512)))
     model.add(Conv2D(
         filters=4096,
         kernel_size=(6, 6),
