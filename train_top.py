@@ -250,7 +250,7 @@ def train(features_dir, labels, test_indexes, batch_size, sample_size,
             validation_data=FeatureExampleGenerator(validation_examples, features_dir, label_array, batch_size),
             validation_steps=math.ceil(float(len(validation_examples)) / batch_size),
         )
-        if not os.exists("models"):
+        if not os.path.exists("models"):
             os.makedirs("models")
         model.save(os.path.join(
             "models", "model-" + strftime("%Y%m%d-%H%M%S", gmtime()) + ".h5"))
