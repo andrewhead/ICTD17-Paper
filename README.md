@@ -7,6 +7,11 @@
 
 ## Setup
 
+### GPU setup
+
+It's critical that you work with a GPU for this to have any
+reasonable performance on training and feature extraction.
+
 On a Google Cloud compute instance:
 
 Install the GPU (instructions based on those from (Google Cloud docs)[https://cloud.google.com/compute/docs/gpus/add-gpus]):
@@ -33,21 +38,20 @@ Then from the compute machine, install it with `dpkg`:
 sudo dkpg -i libcudnn6_6.0.20-1+cuda8.0_amd64.deb
 ```
 
-Then do other project dependencies:
+### Other Project dependencies
 
 ```bash
-# sudo apt-get install git
 git clone <link to this repository>
 
-# sudo easy_install pip
 sudo apt-get update
 sudo apt-get install python-pip --fix-missing
 pip install virtualenv
+sudo apt-get install python-gdal
 
 cd DiiD-Predictor
-virtualenv venv -p python3
+virtualenv --system-site-packages venv -p python3  # lets you access system-wide python3-gdal
 source venv/bin/activate
-pip install -r requirements.txt
+pip install -I -r requirements.txt
 ```
 
 ## Get images for a country
@@ -112,12 +116,25 @@ We rely on the `extract_features` script once again:
 
 ```bash
 python extract_features.py \
-  features/rwanda_vgg16_block5_pool \ 
-  predictions_dense \
-  --model models/rwanda_vgg16_trained_top.h5
-  --input-type=features
-  --batch-size=16
-  --output-dir=features/rwanda_vgg16_trained_top_predictions_dense/
+  features/rwanda_vgg16_block5_pool \
+  conv7 \
+  --flatten \
+  --model models/rwanda_vgg16_trained_top.h5 \
+  --input-type=features \
+  --batch-size=16 \
+  --output-dir=features/rwanda_vgg16_trained_top_conv7_flattened/ \
+```
+
+## Train a model for predicting wealth and education index
+
+```bash
+python train_index.py \
+  features/rwanda_vgg16_trained_top_conv7_flattened/ \
+  csv/rwanda_DHS_wealth.csv \
+  csv/rwanda_TL.csv \
+  nightlights/F182010.v4d_web.stable_lights.avg_vis.tif \
+  models/indexes/rwanda \
+  -v
 ```
 
 ## Retrain convolutional layers
