@@ -107,9 +107,13 @@ def get_features_for_clusters(records, features_dir, i_j_to_example_index_map, m
     # Returns a numpy array, where each row corresponds to one of the entries
     # in `wealth_records`.  Each row contains the average of the features for
     # all images in that record's cluster.
+    # Also returns a list of all clusters for which *no* images were found
+    # (may be those right on the border).  The prediction data for these ones
+    # should probably be discarded.
 
     avg_feature_arrays = tuple()
     missing_records = {}
+    records_without_any_images = []
     for record_index, record in tqdm(enumerate(records), 
             desc="Loading features for records", total=len(records)):
         
@@ -131,23 +135,26 @@ def get_features_for_clusters(records, features_dir, i_j_to_example_index_map, m
                 feature_arrays += (example_features,)
 
         # Compute the average of all features over all neighbors
-        cluster_features = np.stack(feature_arrays)
-        avg_feature_arrays += (np.average(cluster_features, axis=0),)
+        if len(feature_arrays) > 0:
+            cluster_features = np.stack(feature_arrays)
+            avg_feature_arrays += (np.average(cluster_features, axis=0),)
                 
         if count_missing > 0:
             missing_records[record_index] = count_missing
+            if len(feature_arrays) == 0:
+                records_without_any_images.append(record_index)
 
     if len(missing_records.keys()) > 0:
-        print("Missing images for %d clusters.  This might not be a bad " +
-            "thing: some clusters may be near a border.  These clusters are:" % 
-            (len(missing_records.keys())))
+        print("Missing images for %d clusters. " % (len(missing_records.keys())) +
+            ". This might not be a bad thing as some clusters may be near a " +
+            "border.  These clusters are:")
         for record_index, missing_count in missing_records.items():
             print("Record %d (%f, %f): %d images" % 
                 (record_index, records[record_index]['latitude'],
                  records[record_index]['longitude'], missing_count))
 
     avg_features = np.stack(avg_feature_arrays)
-    return avg_features
+    return avg_features, records_without_any_images
 
 
 def read_wealth_records(csv_path):
@@ -233,13 +240,19 @@ if __name__ == '__main__':
     
     # Predict wealth
     wealth_records = read_wealth_records(args.wealth_csv)
-    X_wealth = get_features_for_clusters(
+    y_wealth = [r['wealth'] for r in wealth_records]
+    X_wealth, records_to_discard = get_features_for_clusters(
         records=wealth_records,
         features_dir=args.features_dir,
         i_j_to_example_index_map=i_j_to_example_index_map,
         map_geometry=map_geometry,
     )
-    y_wealth = np.array([r['wealth'] for r in wealth_records])
+    # Some of the clusters might not have any images.  Just discard the
+    # prediction for these ones, don't factor it into the model.  Make
+    # sure to discard in reverse, so we don't mess up the indexing
+    # for discarding later records after discarding earlier records.
+    for i in reversed(records_to_discard):
+        del(y_wealth[i])
     X_wealth_train, X_wealth_test, y_wealth_train, y_wealth_test = (
         train_test_split(X_wealth, y_wealth, test_size=0.33, random_state=1))
     print("Now predicting wealth...")
