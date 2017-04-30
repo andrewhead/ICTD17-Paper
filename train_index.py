@@ -67,7 +67,12 @@ class MapGeometry(object):
         lat_idx = np.where(self.top_left_y_coords > lat)[0][-1]
         return lon_idx, lat_idx
 
-    def get_image_rect(self, longitude, latitude):
+    def get_image_rect_from_cell_indexes(self, image_i, image_j):
+        return self.get_image_rect_from_long_lat(
+            self.centroid_x_coords[image_i],
+            self.centroid_y_coords[image_j])
+
+    def get_image_rect_from_long_lat(self, longitude, latitude):
         """
         We want to get a 10x10 matrix of images around this image. All we have is the 
         center cell indexes and latitude and longitude of the center. We can't just 
@@ -86,7 +91,6 @@ class MapGeometry(object):
         decide whether to truncate the top or bottom of the 11x11 matrix.
         """
         (image_i, image_j) = self.get_cell_idx(longitude, latitude)
-        
         left_image_i = image_i - 5
         left_image_center_longitude = self.centroid_x_coords[left_image_i]
         ideal_left_longitude =  longitude - self.x_size * 5
@@ -101,6 +105,9 @@ class MapGeometry(object):
         rect['left'] = image_i - 4 if truncate_left else image_i - 5
         rect['top'] = image_j - 4 if truncate_top else image_j - 5
         return rect
+
+    def get_centroid_long_lat(self, image_i, image_j):
+        return self.centroid_x_coords[image_i], self.centroid_y_coords[image_j]
 
 
 def get_features_for_clusters(records, features_dir, i_j_to_example_index_map, map_geometry):
@@ -118,8 +125,20 @@ def get_features_for_clusters(records, features_dir, i_j_to_example_index_map, m
             desc="Loading features for records", total=len(records)):
         
         # Find the neighborhood of images for this record's location
-        neighborhood = map_geometry.get_image_rect(
-            record['longitude'], record['latitude'])
+        # Latitude and longitude are more precise, so if they're available, use
+        # them for finding the closest set of images in the neighborhood
+        if 'longitude' in record and 'latitude' in record:
+            neighborhood = map_geometry.get_image_rect_from_long_lat(
+                record['longitude'], record['latitude'])
+        else:
+            neighborhood = map_geometry.get_image_rect_from_cell_indexes(
+                record['i'], record['j'])
+            centroid_longitude, centroid_latitude = (
+                map_geometry.get_centroid_long_lat(record['i'], record['j']))
+            # Save references to tthe approximate latitude and longitude,
+            # in case we want to use it for printing out debugging info later.
+            record['longitude'] = centroid_longitude
+            record['latitude'] = centroid_latitude
         
         # Collect features for all images in the neighborhood
         feature_arrays = tuple()
@@ -165,10 +184,27 @@ def read_wealth_records(csv_path):
         csv_reader = csv.DictReader(csv_file)
         for row in csv_reader:
             # Cast longitude, latitude, and wealth to numbers
-            row['id'] = int(row['id'])
             row['wealth'] = float(row['wealth'])
             row['latitude'] = float(row['LATNUM'])
             row['longitude'] = float(row['LONGNUM'])
+            records.append(row)
+
+    return records
+
+
+def read_education_records(csv_path):
+
+    records = []
+
+    with open(csv_path) as csv_file:
+        csv_reader = csv.DictReader(csv_file)
+        for row in csv_reader:
+            # Cast cell i, j, and wealth to numbers
+            # In the current data, all i's and j's end with an
+            # unnecessary .0, so we strip it off
+            row['i'] = int(row['xcoord'].replace(".0", ""))
+            row['j'] = int(row['ycoord'].replace(".0", ""))
+            row['education_index'] = float(row['avg_educ_index'])
             records.append(row)
 
     return records
@@ -219,6 +255,9 @@ if __name__ == '__main__':
     parser.add_argument("wealth_csv", help="CSV file where " +
         "the top row is a header, col 1 (zero-indexed) is the wealth index, " +
         "col 7 is the latitude, and col 8 is the longitude.")
+    parser.add_argument("education_csv", help="CSV file where " +
+        "the top row is a header, col 3 (zero-indexed) is the education index, " +
+        "col 1 is the cell's 'i' coordinate, and col 2 is the 'j' coordinate.")
     parser.add_argument("nightlights_csv", help="CSV file where " +
         "the top row is a header, col 0 (zero-indexed) is the index of the " +
         "example (basename of eature file), and cols 2 and 3 are the " +
@@ -237,8 +276,10 @@ if __name__ == '__main__':
     if args.v:
         print(".")
     i_j_to_example_index_map = get_map_from_i_j_to_example_index(args.nightlights_csv)
-    
+ 
     # Predict wealth
+    if args.v:
+        print("Preparing for wealth predictions.")
     wealth_records = read_wealth_records(args.wealth_csv)
     y_wealth = [r['wealth'] for r in wealth_records]
     X_wealth, records_to_discard = get_features_for_clusters(
@@ -257,4 +298,21 @@ if __name__ == '__main__':
         train_test_split(X_wealth, y_wealth, test_size=0.33, random_state=1))
     print("Now predicting wealth...")
     predict(X_wealth_train, y_wealth_train, args.output_basename + "_wealth.pkl")
-    
+
+    # Predict education
+    if args.v:
+        print("Preparing for education predictions.")
+    education_records = read_education_records(args.education_csv)
+    y_education = [r['education_index'] for r in education_records]
+    X_education, records_to_discard = get_features_for_clusters(
+        records=education_records,
+        features_dir=args.features_dir,
+        i_j_to_example_index_map=i_j_to_example_index_map,
+        map_geometry=map_geometry,
+    )
+    for i in reversed(records_to_discard):
+        del(y_education[i])
+    X_education_train, X_education_test, y_education_train, y_education_test = (
+        train_test_split(X_education, y_education, test_size=0.33, random_state=2))
+    print("Now predicting education...")
+    predict(X_education_train, y_education_train, args.output_basename + "_education.pkl")
