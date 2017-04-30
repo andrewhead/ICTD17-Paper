@@ -134,7 +134,7 @@ python train_index.py \
   csv/rwanda_cluster_avg_educ_nightlights.csv \
   csv/rwanda_TL.csv \
   nightlights/F182010.v4d_web.stable_lights.avg_vis.tif \
-  models/indexes/rwanda \
+  models/indexes/rwanda_vgg16_trained_top \
   -v
 ```
 
@@ -194,7 +194,7 @@ python train_index.py \
   csv/rwanda_cluster_avg_educ_nightlights.csv \
   csv/rwanda_TL.csv \
   nightlights/F182010.v4d_web.stable_lights.avg_vis.tif \
-  models/indexes/rwanda \
+  models/indexes/rwanda_vgg16_tuned \
   -v
 ```
 
