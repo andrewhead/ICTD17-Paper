@@ -122,7 +122,7 @@ python extract_features.py \
   --model models/rwanda_vgg16_trained_top.h5 \
   --input-type=features \
   --batch-size=16 \
-  --output-dir=features/rwanda_vgg16_trained_top_conv7_flattened/ \
+  --output-dir=features/rwanda_vgg16_trained_top_conv7_flattened/
 ```
 
 ## Train a model for predicting wealth and education index
@@ -162,6 +162,27 @@ python tune_block5.py \
   --learning-rate=.0001 \
   --epochs=6 \
   -v
+```
+
+### And then extract features
+
+First, by flattening the learned model:
+```bash
+python flatten_tuned_model.py \
+  models/rwanda_vgg16_tuned.h5 \
+  models/rwanda_vgg16_tuned_flattened.h5
+```
+
+And then by extracting flattened final layer features:
+```bash
+python extract_features.py \
+  features/rwanda_vgg16_block5_pool \
+  conv7 \
+  --flatten \
+  --model models/rwanda_vgg16_tuned_flattened.h5 \
+  --input-type=features \
+  --batch-size=16 \
+  --output-dir=features/rwanda_vgg16_tuned_conv7/
 ```
 
 ## Getting images that cause activation in later layers
