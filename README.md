@@ -164,7 +164,7 @@ python tune_block5.py \
   -v
 ```
 
-### And then extract features
+### And then extract the final layer features...
 
 First, by flattening the learned model:
 ```bash
@@ -183,6 +183,19 @@ python extract_features.py \
   --input-type=features \
   --batch-size=16 \
   --output-dir=features/rwanda_vgg16_tuned_conv7/
+```
+
+### And then retrain the index predictors!
+
+```bash
+python train_index.py \
+  features/rwanda_vgg16_tuned_conv7_flattened/ \
+  csv/rwanda_DHS_wealth.csv \
+  csv/rwanda_cluster_avg_educ_nightlights.csv \
+  csv/rwanda_TL.csv \
+  nightlights/F182010.v4d_web.stable_lights.avg_vis.tif \
+  models/indexes/rwanda \
+  -v
 ```
 
 ## Getting images that cause activation in later layers
