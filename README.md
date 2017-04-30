@@ -170,10 +170,10 @@ python tune_block5.py \
 python extract_features.py \
   features/rwanda_vgg16_block4_pool/ \
   block5_conv3 \
-  --model models/rwanda_vgg16_retrained.h5
+  --model models/rwanda_vgg16_tuned.h5
   --input-type=features
   --batch-size=16
-  --output-dir=features/rwanda_vgg16_retrained_block5_conv3/
+  --output-dir=features/rwanda_vgg16_tuned_block5_conv3/
 ```
 
 ```bash
