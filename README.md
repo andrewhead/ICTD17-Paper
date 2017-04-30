@@ -226,5 +226,6 @@ Visualize which images maximize each filter:
 ```bash
 python visualize_activations.py \
   activations/rwanda_vgg16_tuned_block5_conv3.txt \
-  activations/rwanda_vgg16_tuned_block5_conv3.png
+  images/Rwanda_simple/ \
+  activations/rwanda_vgg16_tuned_block5_conv3.pdf
 ```
