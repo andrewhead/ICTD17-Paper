@@ -10,6 +10,7 @@ import numpy as np
 import math
 from argparse import ArgumentParser
 import os.path
+from time import gmtime, strftime
 
 from train import load_test_indexes
 from train_top import load_labels, sample_by_class, get_folds, FeatureExampleGenerator
