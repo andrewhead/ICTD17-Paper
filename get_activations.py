@@ -5,8 +5,7 @@ import gc
 from tqdm import tqdm
 
 
-def get_activations(features_dir, feature_batch_size,
-        exemplar_count, output_filename):
+def get_activations(features_dir, exemplar_count, output_filename):
 
     output_file = open(output_filename, 'w')
 
@@ -15,30 +14,28 @@ def get_activations(features_dir, feature_batch_size,
     features_filename = lambda i: os.path.join(features_dir, str(i) + ".npz")
     features_instance = np.load(features_filename(0))["data"]
 
-    # Number of features to load at a time
-    feature_index = 0
-    while feature_index < len(features_instance):
-        num_cols = min(feature_batch_size, len(features_instance) - feature_index)
-        example_features = np.zeros((num_examples, num_cols))
-        print("Computing activations for features %d through %d..." %
-            (feature_index, feature_index + num_cols - 1))
+    # Find out how many filters we'll be averaging over, and the
+    # axes of the features over which to average to get the average intensity
+    # within each filter as the filter "activations"
+    features_shape = features_instance.shape
+    num_filters = features_shape[-1]
+    within_filter_axes = tuple(range(len(features_shape) - 1))
 
-        # Load in this batch of features for all examples
-        for i in tqdm(range(num_examples), desc="Loading features"):
-            features = np.load(features_filename(i))["data"]
-            feature_batch = features[feature_index:feature_index + feature_batch_size]
-            example_features[i] = feature_batch
+    # Make an array of zeros, with one row for each example and one
+    # and one column for the "activation" in each filter
+    filter_activations = np.zeros((num_examples, num_filters))
 
-        print("Writing exemplars to file...", end="")
-        for fi, example_ranks in enumerate(example_features.argsort(axis=0).T):
-            exemplars = example_ranks[::-1][:exemplar_count]
-            output_file.write("%d: %s\n" % (fi, exemplars))
-        print("done.")
+    # Load in this batch of features for all examples
+    for i in tqdm(range(num_examples), desc="Loading features"):
+        features = np.load(features_filename(i))["data"]
+        example_filter_averages = np.average(features, axis=within_filter_axes)
+        filter_activations[i] = example_filter_averages
 
-        # Do garbage collection between each batch to make sure
-        # we have enough memory for the next one.
-        gc.collect()
-        feature_index += feature_batch_size
+    print("Writing exemplars to file...", end="")
+    for fi, example_ranks in enumerate(filter_activations.argsort(axis=0).T):
+        exemplars = example_ranks[::-1][:exemplar_count]
+        output_file.write("%d: %s\n" % (fi, exemplars))
+    print("done.")
 
     output_file.close()
 
@@ -47,21 +44,16 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description=
         "Get indexes of images that most activate individual " +
-        "features in a flattened array of features")
+        "filters in a set of provided features")
     parser.add_argument("features_dir", help="directory containing " +
         "features processed for each image.")
     parser.add_argument("output", help="file to output the results")
-    parser.add_argument("--feature-batch-size", default=10000, type=int,
-        help="How many features to load from files at a time.  " +
-             "This will vary based on how many examples you have.  " +
-             "Do as many as you can without running out of memory.")
     parser.add_argument("--exemplar-count", default=10, type=int,
         help="How many exemplars of each feature to save")
 
     args = parser.parse_args()
     get_activations(
         features_dir=args.features_dir,
-        feature_batch_size=args.feature_batch_size,
         exemplar_count=args.exemplar_count,
         output_filename=args.output,
     )

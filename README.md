@@ -178,5 +178,7 @@ python extract_features.py \
 
 ```bash
 python get_activations.py \
-  features/rwanda_vgg16_retrained_block5_conv3/
+  features/rwanda_vgg16_block5_pool/ \
+  activations/rwanda_block5_pool.txt \
+  --exemplar-count=10
 ```
