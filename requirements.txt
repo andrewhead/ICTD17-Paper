@@ -9,6 +9,7 @@ ipython-genutils==0.2.0
 Keras==2.0.3
 Mako==1.0.6
 MarkupSafe==1.0
+matplotlib==2.0.0
 mccabe==0.6.1
 numpy==1.12.1
 olefile==0.44
