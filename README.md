@@ -131,6 +131,7 @@ python extract_features.py \
 python train_index.py \
   features/rwanda_vgg16_trained_top_conv7_flattened/ \
   csv/rwanda_DHS_wealth.csv \
+  csv/rwanda_cluster_avg_educ_nightlights.csv \
   csv/rwanda_TL.csv \
   nightlights/F182010.v4d_web.stable_lights.avg_vis.tif \
   models/indexes/rwanda \
@@ -152,7 +153,7 @@ Then retrain only the end of top of the net and the last convolutional block.
 (At the time of writing this, this step wasn't yet implemented.)
 
 ```bash
-python retrain_conv_block5.py \
+python tune_block5.py \
   features/rwanda_vgg16_block4_pool \
   models/rwanda_vgg16_trained_top.h5 \
   csv/rwanda_TL.csv \
