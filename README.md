@@ -138,6 +138,10 @@ python train_index.py \
   -v
 ```
 
+Add the `--show-test-results` flag, and optionally set the
+`--prediction-output-basename` option, to see and save the
+model performance on the test set.
+
 ## Retrain convolutional layers
 
 Extract the features in block 4:

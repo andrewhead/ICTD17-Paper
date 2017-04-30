@@ -245,6 +245,8 @@ def predict(features, y, output_filename):
     print("Saving trained model to file ", output_filename)
     joblib.dump(ridge, output_filename)
 
+    return ridge
+
 
 if __name__ == '__main__':
 
@@ -265,6 +267,13 @@ if __name__ == '__main__':
     parser.add_argument("nightlights_raster", help="Raster file of " +
         "nightlights, used for making a map from latitude and longitude " +
         "to cell indexes on the map.")
+    parser.add_argument("--show-test-results", action='store_true',
+        help="Whether to present test results at the end of training.  For " +
+        "good practice, you should only set this flag when this is the last " +
+        "time to measure performance.")
+    parser.add_argument("--prediction-output-basename",
+        help="If you're running test results, set this flag and you can " +
+        "output the test predictions to file")
     parser.add_argument("output_basename", help="Basename of files to which " +
         "to output the created models.")
     parser.add_argument("-v", action="store_true", help="verbose")
@@ -297,7 +306,8 @@ if __name__ == '__main__':
     X_wealth_train, X_wealth_test, y_wealth_train, y_wealth_test = (
         train_test_split(X_wealth, y_wealth, test_size=0.33, random_state=1))
     print("Now predicting wealth...")
-    predict(X_wealth_train, y_wealth_train, args.output_basename + "_wealth.pkl")
+    wealth_model = predict(X_wealth_train, y_wealth_train,
+        args.output_basename + "_wealth.pkl")
 
     # Predict education
     if args.v:
@@ -315,4 +325,32 @@ if __name__ == '__main__':
     X_education_train, X_education_test, y_education_train, y_education_test = (
         train_test_split(X_education, y_education, test_size=0.33, random_state=2))
     print("Now predicting education...")
-    predict(X_education_train, y_education_train, args.output_basename + "_education.pkl")
+    education_model = predict(X_education_train, y_education_train,
+        args.output_basename + "_education.pkl")
+
+    if args.show_test_results:
+        
+        print("Evaluating performance on test set.")
+
+        if args.prediction_output_basename is not None:
+            wealth_predictions = wealth_model.predict(X_wealth_test)
+            np.savez_compressed(
+                args.prediction_output_basename + "_wealth.npz",
+                X_train=X_wealth_train,
+                y_train=y_wealth_train,
+                X_test=X_wealth_test,
+                y_test=y_wealth_test,
+                y_test_predictions=wealth_predictions,
+            )
+            education_predictions = education_model.predict(X_education_test)
+            np.savez_compressed(
+                args.prediction_output_basename + "_education.npz",
+                X_train=X_education_train,
+                y_train=y_education_train,
+                X_test=X_education_test,
+                y_test=y_education_test,
+                y_test_predictions=education_predictions,
+            )
+
+        print("Wealth R^2:", wealth_model.score(X_wealth_test, y_wealth_test))
+        print("Education R^2:", education_model.score(X_education_test, y_education_test))
