@@ -187,6 +187,8 @@ python extract_features.py \
 
 ## Getting images that cause activation in later layers
 
+Extract the features of a convolutional layer:
+
 ```bash
 python extract_features.py \
   features/rwanda_vgg16_block4_pool/ \
@@ -197,9 +199,19 @@ python extract_features.py \
   --output-dir=features/rwanda_vgg16_tuned_block5_conv3/
 ```
 
+Compute which images activate each filter in that layer:
+
 ```bash
 python get_activations.py \
-  features/rwanda_vgg16_block5_pool/ \
-  activations/rwanda_block5_pool.txt \
+  features/rwanda_vgg16_tuned_block5_conv3/ \
+  activations/rwanda_vgg16_tuned_block5_conv3.txt \
   --exemplar-count=10
+```
+
+Visualize which images maximize each filter:
+
+```bash
+python visualize_activations.py \
+  activations/rwanda_vgg16_tuned_block5_conv3.txt \
+  activations/rwanda_vgg16_tuned_block5_conv3.png
 ```
