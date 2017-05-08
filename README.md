@@ -1,65 +1,30 @@
 # DiiD-Predictor
 
-## When deploying
-
-* Install the virtualenv requirements
-* Upload the existing ImageNet weights
-
-## Setup
-
-### GPU setup
-
-It's critical that you work with a GPU for this to have any
-reasonable performance on training and feature extraction.
-
-On a Google Cloud compute instance:
-
-Install the GPU (instructions based on those from (Google Cloud docs)[https://cloud.google.com/compute/docs/gpus/add-gpus]):
+You can use the following commands to do training and testing for our DiiD final project.
+Before you run any of these commands, do this:
 
 ```bash
-echo "Checking for CUDA and installing."
-if ! dpkg-query -W cuda; then
-  # The 16.04 installer works with 16.10.
-  curl -O http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64/cuda-repo-ubuntu1604_8.0.61-1_amd64.deb
-  sudo dpkg -i ./cuda-repo-ubuntu1604_8.0.61-1_amd64.deb
-  sudo apt-get update
-  sudo apt-get install cuda -y
-fi
+cd ~/DiiD-Predictor       # Change directory to this directory
+source venv/bin/activate  # Start Python virtual environment (load dependencies)
 ```
 
-Add the CudNN library:
-From your main development computer (not Google Cloud), transfer the `deb` that you download from [here](https://developer.nvidia.com/cudnn) (make sure to download version 5.1).
+Most of these commands will take a *really long* time to run.  To make sure that they
+still run even after your SSH session has ended, use `nohup` at the beginning
+of every command.  You can start off a command with `nohup` and then watch it's
+progress with the following recipe:
+
 ```bash
-scp -i ~/.ssh/google_compute_engine ~/Downloads/libcudnn6_6.0.20-1+cuda8.0_amd64.deb  andrew@35.185.45.28:/home/andrew/
+nohup <command> &  # run the command, don't terminate when SSH session is closed
+tail -f nohup.log  # view the output of the program
 ```
 
-Then from the compute machine, install it with `dpkg`:
+For example, to extract features, run:
 ```bash
-sudo dkpg -i libcudnn6_6.0.20-1+cuda8.0_amd64.deb
-```
-
-### Other Project dependencies
-
-```bash
-git clone <link to this repository>
-
-sudo apt-get update
-sudo apt-get install python-pip --fix-missing
-pip install virtualenv
-sudo apt-get install python-gdal
-
-cd DiiD-Predictor
-virtualenv --system-site-packages venv -p python3  # lets you access system-wide python3-gdal
-source venv/bin/activate
-pip install -I -r requirements.txt
-```
-
-## Get images for a country
-
-```bash
-mkdir images
-cd images/
-gsutil -m cp -r gs://diid/Rwanda .
+nohup python extract_features.py \
+  images/Rwanda_simple/ \
+  block5_pool \
+  --output-dir features/rwanda_vgg16_block5_pool/ &
+tail -f nohup.log
 ```
 
 ## Preprocess images to have the expected indexes
@@ -232,4 +197,63 @@ python visualize_activations.py \
   activations/rwanda_vgg16_tuned_block5_conv3.txt \
   images/Rwanda_simple/ \
   activations/rwanda_vgg16_tuned_block5_conv3.pdf
+```
+
+## Setup
+
+If you're setting up a machine from scratch, you'll need to follow these steps.
+
+### GPU setup
+
+It's critical that you work with a GPU for this to have any
+reasonable performance on training and feature extraction.
+
+On a Google Cloud compute instance:
+
+Install the GPU (instructions based on those from (Google Cloud docs)[https://cloud.google.com/compute/docs/gpus/add-gpus]):
+
+```bash
+echo "Checking for CUDA and installing."
+if ! dpkg-query -W cuda; then
+  # The 16.04 installer works with 16.10.
+  curl -O http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64/cuda-repo-ubuntu1604_8.0.61-1_amd64.deb
+  sudo dpkg -i ./cuda-repo-ubuntu1604_8.0.61-1_amd64.deb
+  sudo apt-get update
+  sudo apt-get install cuda -y
+fi
+```
+
+Add the CudNN library:
+From your main development computer (not Google Cloud), transfer the `deb` that you download from [here](https://developer.nvidia.com/cudnn) (make sure to download version 5.1).
+```bash
+scp -i ~/.ssh/google_compute_engine ~/Downloads/libcudnn6_6.0.20-1+cuda8.0_amd64.deb  andrew@35.185.45.28:/home/andrew/
+```
+
+Then from the compute machine, install it with `dpkg`:
+```bash
+sudo dkpg -i libcudnn6_6.0.20-1+cuda8.0_amd64.deb
+```
+
+### Other Project dependencies
+
+```bash
+git clone <link to this repository>
+
+sudo apt-get update
+sudo apt-get install python-pip --fix-missing
+pip install virtualenv
+sudo apt-get install python-gdal
+
+cd DiiD-Predictor
+virtualenv --system-site-packages venv -p python3  # lets you access system-wide python3-gdal
+source venv/bin/activate
+pip install -I -r requirements.txt
+```
+
+## Get images for a country
+
+```bash
+mkdir images
+cd images/
+gsutil -m cp -r gs://diid/Rwanda .
 ```
