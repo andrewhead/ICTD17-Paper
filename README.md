@@ -4,7 +4,8 @@ You can use the following commands to do training and testing for our DiiD final
 Before you run any of these commands, do this:
 
 ```bash
-cd ~/DiiD-Predictor       # Change directory to this directory
+sudo -u andrew bash       # Change user to Andrew
+cd ~/DiiD-Predictor       # Change directory to this directory
 source venv/bin/activate  # Start Python virtual environment (load dependencies)
 ```
 
