@@ -108,6 +108,18 @@ Add the `--show-test-results` flag, and optionally set the
 `--prediction-output-basename` option, to see and save the
 model performance on the test set.
 
+## Train a model for predicting wealth, education and water index
+
+python train_index.py \
+  features/rwanda_vgg16_trained_top_conv7_flattened/ \
+  csv/rwanda_DHS_wealth.csv \
+  csv/rwanda_cluster_avg_educ_nightlights.csv \
+  csv/rwanda_cluster_avg_water_nightlights.csv \
+  csv/rwanda_TL.csv \
+  nightlights/F182010.v4d_web.stable_lights.avg_vis.tif \
+  models/indexes/rwanda_vgg16_trained_top \
+  -v
+
 ## Retrain convolutional layers
 
 Extract the features in block 4:
