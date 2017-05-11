@@ -110,7 +110,7 @@ model performance on the test set.
 
 ## Train a model for predicting wealth, education and water index
 
-python train_index.py \
+python train_index_water.py \
   features/rwanda_vgg16_trained_top_conv7_flattened/ \
   csv/rwanda_DHS_wealth.csv \
   csv/rwanda_cluster_avg_educ_nightlights.csv \
