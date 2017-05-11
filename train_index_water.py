@@ -209,7 +209,7 @@ def read_education_records(csv_path):
 
     return records
     
-def read_education_records(csv_path):
+def read_water_records(csv_path):
 
     records = []
 
@@ -221,7 +221,7 @@ def read_education_records(csv_path):
             # unnecessary .0, so we strip it off
             row['i'] = int(row['xcoord'].replace(".0", ""))
             row['j'] = int(row['ycoord'].replace(".0", ""))
-            row['education_index'] = float(row['avg_water_index'])
+            row['water_index'] = float(row['avg_water_index'])
             records.append(row)
 
     return records
