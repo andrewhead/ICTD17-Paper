@@ -109,7 +109,7 @@ Add the `--show-test-results` flag, and optionally set the
 model performance on the test set.
 
 ## Train a model for predicting wealth, education and water index
-
+```
 python train_index_water.py \
   features/rwanda_vgg16_trained_top_conv7_flattened/ \
   csv/rwanda_DHS_wealth.csv \
@@ -119,6 +119,7 @@ python train_index_water.py \
   nightlights/F182010.v4d_web.stable_lights.avg_vis.tif \
   models/indexes/rwanda_vgg16_trained_top \
   -v
+  ```
 
 ## Retrain convolutional layers
 
