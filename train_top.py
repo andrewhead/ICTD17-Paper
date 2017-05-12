@@ -16,92 +16,8 @@ from argparse import ArgumentParser
 import os.path
 from time import gmtime, strftime
 
-from train import load_labels, load_test_indexes
-
-
-# This method assumes that all labels are a string representing an integer
-def load_labels(csv_filename):
-    labels = []
-    with open(csv_filename) as csvfile:
-        rows = csv.reader(csvfile)
-        first_row = True
-        for row in rows:
-            if first_row:
-                first_row = False
-                continue
-            labels.append(row[6])
-    return np.array(labels)
-
-
-# Use this to get an equal representation of all classes in the
-# set of examples that you'll be training on.
-def sample_by_class(example_indexes, labels, sample_size):
-
-    all_examples = np.array([], dtype=np.int32)
-
-    # Sort examples by class
-    class_examples = {}
-    for example_index in example_indexes:
-        class_ = labels[example_index]
-        if class_ not in class_examples:
-            class_examples[class_] = []
-        class_examples[class_].append(example_index)
-
-    # For each class...
-    for class_, examples in class_examples.items():
-
-        # Repeat the array as many times as it will take to get
-        # enough examples for the sample.  Stack a bunch of shuffled
-        # repeats on top of each other.  This sampling method lets us
-        # avoid repeat sampling until all items have been sampled once.
-        examples_array = np.array(examples)
-        repeats = math.ceil(float(sample_size) / len(examples))
-        repeated_examples = np.array([])
-        for _ in range(repeats):
-            repeat = examples_array.copy()
-            np.random.shuffle(repeat)
-            repeated_examples = np.concatenate((repeated_examples, repeat))
-
-        # Truncate the repeated randomized lists to the sample size
-        # and append to the shared list of output examples
-        repeated_examples = repeated_examples[:sample_size]
-        all_examples = np.concatenate((all_examples, repeated_examples))
-
-    # Shuffle one more time at the end, as before this, all
-    # examples have incidentally been sorted by class
-    np.random.shuffle(all_examples)
-    return all_examples
-
-
-# Return a list of fold specs, where each one includes
-# "train": a list of indexes of training examples
-# "validation": a list of indexes of validation examples
-# All test indexes will be omitted from all folds
-def get_folds(example_indexes, num_folds=3):
-
-    indexes_shuffled = np.array(example_indexes, dtype=np.int32)
-    np.random.shuffle(indexes_shuffled)
-
-    folds = []
-    fold_size = math.ceil(len(indexes_shuffled) / num_folds)
-    for fold_index in range(num_folds):
-
-        fold_start = fold_size * fold_index
-        fold_end = fold_start + fold_size
-
-        validation_mask = np.zeros(len(indexes_shuffled), np.bool)
-        validation_mask[fold_start:fold_end] = 1
-        validation_indexes = indexes_shuffled[validation_mask]
-
-        training_mask = np.invert(validation_mask)
-        training_indexes = indexes_shuffled[training_mask]
-
-        folds.append({
-            "validation": validation_indexes,
-            "training": training_indexes,
-        })
-
-    return folds
+from util.load_data import load_labels, load_test_indexes
+from util.sample import get_folds, get_training_examples, FeatureExampleGenerator
 
 
 # To the best of my ability, this creates the top layers of a neural network
@@ -154,48 +70,9 @@ def make_jean_top(num_classes=3):
     return model
 
 
-class FeatureExampleGenerator(object):
-
-    def __init__(self, indexes, feature_dir, labels, batch_size):
-        self.indexes = indexes
-        self.feature_dir = feature_dir
-        self.labels = labels
-        self.batch_size = batch_size
-        self.pointer = 0
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        return self.next()
-
-    def next(self):
-
-        # Get the list of example indexes in this batch
-        batch_indexes = self.indexes[self.pointer:self.pointer + self.batch_size]
-
-        # Load features for examples from file
-        data_file_names = [
-            os.path.join(self.feature_dir, str(i) + ".npz")
-            for i in batch_indexes]
-        examples = tuple()
-        for filename in data_file_names:
-            examples += (np.load(filename)["data"],)
-        example_array = np.stack(examples)
-
-        # Grab the labels for this batch
-        labels = self.labels[batch_indexes]
-
-        # Advance pointer for next batch
-        self.pointer += self.batch_size
-        if self.pointer >= len(self.indexes):
-            self.pointer = 0
-
-        return (example_array, labels)
-
-
 def train(features_dir, labels, test_indexes, batch_size, sample_size,
-        learning_rate, epochs, kfolds, verbose=False, num_classes=3):
+        learning_rate, epochs, kfolds, training_indexes_filename,
+        verbose=False, num_classes=3):
 
     if verbose:
         print("Building model of top of net...", end="")
@@ -213,16 +90,15 @@ def train(features_dir, labels, test_indexes, batch_size, sample_size,
     if verbose:
         print("done.")
 
-    # Get list of indexes for all examples
-    feature_files = os.listdir(features_dir)
-    example_indexes = list(range(len(feature_files)))
-
-    # Filter to the indexes that can be used for training
-    training_indexes = list(filter(
-        lambda i: i not in test_indexes, example_indexes))
-
-    # Sample for equal representation of each class
-    sampled_examples = sample_by_class(example_indexes, labels, sample_size)
+    # Sample for training indexes, or load from file
+    if training_indexes_filename is not None:
+        sampled_examples = []
+        with open(training_indexes_filename) as training_indexes_file:
+            for line in training_indexes_file:
+                sampled_examples.append(int(line.strip()))
+    else:
+        sampled_examples = get_training_examples(
+            features_dir, labels, test_indexes, sample_size)
 
     # Divide the sampled training data into folds
     folds = get_folds(sampled_examples, kfolds)
@@ -276,6 +152,9 @@ if __name__ == "__main__":
     argument_parser.add_argument("--learning-rate", default=0.01, type=float)
     argument_parser.add_argument("--epochs", default=10, type=int)
     argument_parser.add_argument("--num-folds", default=3, type=int)
+    argument_parser.add_argument("--training-indexes-file", help="File containing " +
+        "an index of a training example on each line.  Useful if you only have " +
+        "features extracted for a subset of the examples.")
     args = argument_parser.parse_args()
 
     test_indexes = load_test_indexes(args.test_index_file)
@@ -289,5 +168,6 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         kfolds=args.num_folds,
         learning_rate=args.learning_rate,
+        training_indexes_filename=args.training_indexes_file,
         verbose=args.v,
     )

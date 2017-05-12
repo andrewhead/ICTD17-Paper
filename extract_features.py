@@ -73,7 +73,7 @@ def get_features_for_input_images(model, img_paths, batch_size):
 
 
 def extract_features(model_path, input_dir, layer_name, output_dir,
-        flatten, batch_size, input_type):
+        flatten, batch_size, input_type, example_indexes):
 
     # Add records for the custom metrics we attached to the models,
     # pointing them to no-op metrics methods.
@@ -100,14 +100,27 @@ def extract_features(model_path, input_dir, layer_name, output_dir,
     model = Model(input_layer.input, output_layer.output)
     print("done.")
 
-    # Compute the features in batches
     print("Now computing features for all batches of images...")
     filename = lambda image_index: os.path.join(
         output_dir, str(image_index) + ".npz")
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    filenames = [os.path.join(input_dir, f) for f in os.listdir(input_dir)]
+    # Load in the filenames.  Filter down to a subset if the caller provided
+    # a list of indexes they wanted features for.
+    basenames = os.listdir(input_dir)
+    selected_basenames = []
+    for basename in basenames:
+        if example_indexes is None:
+            selected_basenames.append(basename)
+        else:
+            example_index = int(os.path.splitext(basename)[0])
+            if example_index in example_indexes:
+                selected_basenames.append(basename)
+    filenames = [os.path.join(input_dir, f) for f in selected_basenames]
+    print("# files:", len(filenames))
+    
+    # Compute the features in batches
     expected_batches = math.ceil(len(filenames) / float(batch_size))
     if input_type == "images":
         input_generator = get_features_for_input_images(model, filenames, batch_size)
@@ -152,8 +165,24 @@ if __name__ == '__main__':
         "extract features for at a time.", type=int)
     parser.add_argument("--output-dir", default="features/output/",
         help="Name of directory to write features to.")
-
+    parser.add_argument("--filter-indexes", nargs="+",
+        help="Files containing indexes of the examples for which features " +
+             "should be extracted. A different index should appear on each " +
+             "line, and you can specify multiple files.")
     args = parser.parse_args()
+
+    # Make list of the examples for which we want to extract features.  If no
+    # indexes files were provided, we set `example_indexes` to None, which
+    # means we'll extract features for all files in the input directory.
+    if args.filter_indexes:
+        example_indexes = set()
+        for indexes_filename in args.filter_indexes:
+            with open(indexes_filename) as indexes_file:
+                for line in indexes_file:
+                    example_indexes.add(int(line.strip()))
+    else:
+        example_indexes = None
+
     extract_features(
         model_path=args.model,
         input_dir=args.input_dir,
@@ -162,4 +191,5 @@ if __name__ == '__main__':
         flatten=args.flatten,
         batch_size=args.batch_size,
         input_type=args.input_type,
+        example_indexes=example_indexes,
     )

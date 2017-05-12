@@ -213,6 +213,63 @@ python visualize_activations.py \
   activations/rwanda_vgg16_tuned_block5_conv3.pdf
 ```
 
+## Restricting feature extraction and training to a subset of images
+
+Run this command twice.  Once to produce training indexes 
+for training the top
+(`indexes/Rwanda_train_top_training_indexes.txt`), and once
+to produce indexes for fine-tuning
+(`indexes/Rwanda_tuning_training_indexes.txt`).
+
+```bash
+python util/sample.py \
+  images/Rwanda_simple/ \
+  csv/rwanda_TL.csv \
+  indexes/Rwanda_test_indexes.txt \
+  10000 > indexes/Rwanda_train_top_training_indexes.txt
+```
+
+You can also precompute the indexes of features that are
+close to the DHS clusters:
+
+```bash
+python util/geometry.py \
+  csv/rwanda_DHS_wealth.csv \
+  csv/rwanda_cluster_avg_educ_nightlights.csv \
+  csv/rwanda_cluster_avg_water_nightlights.csv \
+  csv/rwanda_TL.csv \
+  nightlights/F182010.v4d_web.stable_lights.avg_vis.tif > indexes/Rwanda_dhs_cluster_indexes.txt
+```
+
+You can restric feature extraction to just examples with
+indexes defined in a set of files:
+
+```bash
+python extract_features.py \
+  images/Rwanda_simple/ \
+  block5_pool \
+  --output-dir features/rwanda_vgg16_block5_pool/ \
+  --filter-indexes indexes/Rwanda_test_indexes.txt indexes/Rwanda_train_top_training_indexes.txt
+```
+
+Note that you can provide multiple files from which to read
+the indexes for feature extraction!
+
+Then, you can train the top or do fine-tuning with these
+precomputed training indexes, for example:
+
+```bash
+python train_top.py \
+  features/rwanda_vgg16_block5_pool \
+  csv/rwanda_TL.csv \
+  indexes/Rwanda_test_indexes.txt \
+  --learning-rate 0.01 \
+  --batch-size=100 \
+  --epochs=6 \
+  --training-indexes-file=indexes/Rwanda_train_top_training_indexes.txt \
+  -v
+```
+
 ## Setup
 
 If you're setting up a machine from scratch, you'll need to follow these steps.

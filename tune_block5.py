@@ -12,15 +12,16 @@ from argparse import ArgumentParser
 import os.path
 from time import gmtime, strftime
 
-from train import load_test_indexes
-from train_top import load_labels, sample_by_class, get_folds, FeatureExampleGenerator
+from util.load_data import load_labels, load_test_indexes
+from util.sample import get_folds, get_training_examples, FeatureExampleGenerator
 
 
 BLOCK5_WEIGHTS = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.1/vgg16_weights_tf_dim_ordering_tf_kernels_notop.h5'
 
 
 def train(features_dir, top_model_filename, labels, test_indexes, batch_size, sample_size,
-        learning_rate, momentum, epochs, kfolds, verbose=False, num_classes=3):
+        learning_rate, momentum, epochs, kfolds, training_indexes_filename,
+        verbose=False, num_classes=3):
 
     if verbose:
         print("Creating block 5 of VGG16..", end="")
@@ -95,16 +96,15 @@ def train(features_dir, top_model_filename, labels, test_indexes, batch_size, sa
     if verbose:
         print("done.")
 
-    # Get list of indexes for all examples
-    feature_files = os.listdir(features_dir)
-    example_indexes = list(range(len(feature_files)))
-
-    # Filter to the indexes that can be used for training
-    training_indexes = list(filter(
-        lambda i: i not in test_indexes, example_indexes))
-
-    # Sample for equal representation of each class
-    sampled_examples = sample_by_class(example_indexes, labels, sample_size)
+    # Sample for training indexes, or load from file
+    if training_indexes_filename is not None:
+        sampled_examples = []
+        with open(training_indexes_filename) as training_indexes_file:
+            for line in training_indexes_file:
+                sampled_examples.append(int(line.strip()))
+    else:
+        sampled_examples = get_training_examples(
+            features_dir, labels, test_indexes, sample_size)
 
     # Divide the sampled training data into folds
     folds = get_folds(sampled_examples, kfolds)
@@ -162,6 +162,9 @@ if __name__ == "__main__":
     argument_parser.add_argument("--momentum", default=0.9, type=float)
     argument_parser.add_argument("--epochs", default=10, type=int)
     argument_parser.add_argument("--num-folds", default=3, type=int)
+    argument_parser.add_argument("--training-indexes-file", help="File containing " +
+        "an index of a training example on each line.  Useful if you only have " +
+        "features extracted for a subset of the examples.")
     args = argument_parser.parse_args()
 
     test_indexes = load_test_indexes(args.test_index_file)
@@ -177,5 +180,6 @@ if __name__ == "__main__":
         kfolds=args.num_folds,
         learning_rate=args.learning_rate,
         momentum=args.momentum,
+        training_indexes_filename=args.training_indexes_file,
         verbose=args.v,
     )

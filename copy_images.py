@@ -35,13 +35,14 @@ def make_cell_to_file_lookup(input_dir):
     return lookup
 
 
-def move_files(cell_to_index_dict, cell_to_file_dict, output_dir):
+def move_files(cell_to_index_dict, cell_to_file_dict, output_dir, move):
     copy_count = 0
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
     for (i, j), index in cell_to_index_dict.items():
         # This trick of recursive search with "**" will only work in Python 3.5 and later
-        shutil.copyfile(
+        copy_function = shutil.copyfile if not move else shutil.move
+        copy_function(
             cell_to_file_dict[(i, j)],
             os.path.join(output_dir, str(index) + ".jpg")
         )
@@ -56,8 +57,9 @@ if __name__ == "__main__":
     argument_parser.add_argument("input_dir")
     argument_parser.add_argument("csvfile", help="Name of file with image indexes")
     argument_parser.add_argument("--output-dir", default="images")
+    argument_parser.add_argument("--move", help="Move images instead of copying", action="store_true")
     args = argument_parser.parse_args()
     cell_to_index_dict = make_cell_to_index_lookup(args.csvfile)
     cell_to_file_dict = make_cell_to_file_lookup(args.input_dir)
-    move_files(cell_to_index_dict, cell_to_file_dict, args.output_dir)
+    move_files(cell_to_index_dict, cell_to_file_dict, args.output_dir, args.move)
 
