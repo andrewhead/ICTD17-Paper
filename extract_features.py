@@ -23,6 +23,7 @@ def get_features_for_input_features(model, filenames, batch_size):
         num_rows = min(batch_size, len(filenames) - batch_start)
         X = np.zeros((num_rows,) + input_shape)
         batch_filenames = filenames[batch_start:batch_start + batch_size]
+        batch_example_indexes = []
 
         for input_index, input_path in enumerate(batch_filenames):
 
@@ -30,11 +31,15 @@ def get_features_for_input_features(model, filenames, batch_size):
             input_ = np.load(input_path)["data"]
             X[input_index] = input_
 
+            # Save the index of the the example we just loaded
+            example_index = int(os.path.splitext(os.path.basename(input_path))[0])
+            batch_example_indexes.append(example_index)
+
         # Find the output of the final layer
         # Borrowed from https://github.com/fchollet/keras/issues/41
         features = model.predict([X])
         features_array = np.array(features)
-        yield features_array
+        yield (batch_example_indexes, features_array)
         batch_start += batch_size
 
     yield StopIteration
@@ -55,6 +60,7 @@ def get_features_for_input_images(model, img_paths, batch_size):
         # but it doesn't matter for us right now as we're using square images
         X = np.zeros((num_rows, width, height, 3))
         batch_img_paths = img_paths[batch_start:batch_start + batch_size]
+        batch_example_indexes = []
 
         for img_index, img_path in enumerate(batch_img_paths):
 
@@ -63,10 +69,14 @@ def get_features_for_input_images(model, img_paths, batch_size):
             img_array = image.img_to_array(img)
             X[img_index, :, :, :] = img_array
 
+            # Save the index of the the example we just loaded
+            example_index = int(os.path.splitext(os.path.basename(img_path))[0])
+            batch_example_indexes.append(example_index)
+
         # Find the output of the final layer
         features = model.predict([X])
         features_array = np.array(features)
-        yield features_array
+        yield (batch_example_indexes, features_array)
         batch_start += batch_size
 
     yield StopIteration
@@ -118,7 +128,6 @@ def extract_features(model_path, input_dir, layer_name, output_dir,
             if example_index in example_indexes:
                 selected_basenames.append(basename)
     filenames = [os.path.join(input_dir, f) for f in selected_basenames]
-    print("# files:", len(filenames))
     
     # Compute the features in batches
     expected_batches = math.ceil(len(filenames) / float(batch_size))
@@ -127,18 +136,16 @@ def extract_features(model_path, input_dir, layer_name, output_dir,
     elif input_type == "features":
         input_generator = get_features_for_input_features(model, filenames, batch_size)
 
-    feature_index = 0
-    for feature_batch in tqdm(input_generator, total=expected_batches):
+    for (example_indexes, feature_batch) in tqdm(input_generator, total=expected_batches):
         if flatten:
             feature_batch = feature_batch.reshape(feature_batch.shape[0], -1)
-        for image_features in feature_batch:
+        for example_index, image_features in zip(example_indexes, feature_batch):
             # It's important to store using `compressed` if you want to save more than
             # a few hundred images.  Without compression, every 1,000 images will take
             # about 1GB of memory, which might not scale well for most datasets
             # Each record is saved to its own file to enable efficient loading without
             # needing to load all image features into memory during later training.
-            np.savez_compressed(filename(feature_index), data=image_features)
-            feature_index += 1
+            np.savez_compressed(filename(example_index), data=image_features)
 
     print("All features have been computed and saved.")
     print("Reload features for each image with: `np.load(<filename>)['data']`")
