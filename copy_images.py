@@ -36,14 +36,26 @@ def make_cell_to_file_lookup(input_dir):
 
 
 def move_files(cell_to_index_dict, cell_to_file_dict, output_dir, move):
-    copy_count = 0
+
+    # Create the output directory
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
+
+    copy_count = 0
     for (i, j), index in cell_to_index_dict.items():
-        # This trick of recursive search with "**" will only work in Python 3.5 and later
+
+        # Only transfer a file if there's a record for it in the
+        # nightlights data, and the image actually exists
+        if not (i, j) in cell_to_file_dict:
+            continue
+        source_filename = cell_to_file_dict[(i, j)]
+        if not os.path.exists(source_filename):
+            continue
+
+        # Copy or move the file
         copy_function = shutil.copyfile if not move else shutil.move
         copy_function(
-            cell_to_file_dict[(i, j)],
+            source_filename,
             os.path.join(output_dir, str(index) + ".jpg")
         )
         copy_count += 1
