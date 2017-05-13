@@ -90,11 +90,12 @@ def get_training_examples(features_dir, labels, test_indexes, sample_size):
         example_indexes.append(index)
 
     # Filter to the indexes that can be used for training
-    training_indexes = list(filter(
-        lambda i: i not in test_indexes, example_indexes))
+    example_indexes_set = set(example_indexes)
+    test_indexes_set = set(test_indexes)
+    training_indexes = example_indexes_set.difference(test_indexes_set)
 
     # Sample for equal representation of each class
-    sampled_examples = sample_by_class(example_indexes, labels, sample_size)
+    sampled_examples = sample_by_class(training_indexes, labels, sample_size)
     return sampled_examples
 
 
