@@ -31,10 +31,16 @@ def read_wealth_records(csv_path):
     with open(csv_path) as csv_file:
         csv_reader = csv.DictReader(csv_file)
         for row in csv_reader:
-            # Cast longitude, latitude, and wealth to numbers
-            row['wealth'] = float(row['wealth'])
-            row['latitude'] = float(row['LATNUM'])
-            row['longitude'] = float(row['LONGNUM'])
+            # Support multiple formats of wealth index file (we have
+            # inconsistent internal formats).
+            if "wealth_index" in row:
+                row['wealth'] = float(row['wealth_index'])
+                row['i'] = int(row['xcoord'].replace(".0", ""))
+                row['j'] = int(row['ycoord'].replace(".0", ""))
+            else:
+                row['wealth'] = float(row['wealth'])
+                row['latitude'] = float(row['LATNUM'])
+                row['longitude'] = float(row['LONGNUM'])
             records.append(row)
 
     return records
