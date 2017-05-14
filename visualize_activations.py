@@ -39,9 +39,9 @@ def visualize_activations(activations_filename, image_dir, output_filename):
                 image_indexes = [int(n) for n in match.group(2).split()]
 
                 # Make array of subplots for showing exemplars                
-                rows = 3
+                rows = 4
                 cols = math.ceil(len(image_indexes) / rows)
-                f, axarr = plt.subplots(rows, cols)
+                f, axarr = plt.subplots(rows, cols, figsize=(24, 18))
                 f.suptitle("Images activating filter %d" % (filter_index))
 
                 # Hide axes, make it look prettier

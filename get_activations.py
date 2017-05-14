@@ -11,13 +11,12 @@ def get_activations(features_dir, exemplar_count, output_filename):
 
     # Get number of examples and shape of features
     num_examples = len(os.listdir(features_dir))
-    features_filename = lambda i: os.path.join(features_dir, str(i) + ".npz")
-    features_instance = np.load(features_filename(0))["data"]
+    features_instance = np.load(os.path.join(features_dir, os.listdir(features_dir)[0]))["data"]
+    features_shape = features_instance.shape
 
     # Find out how many filters we'll be averaging over, and the
     # axes of the features over which to average to get the average intensity
     # within each filter as the filter "activations"
-    features_shape = features_instance.shape
     num_filters = features_shape[-1]
     within_filter_axes = tuple(range(len(features_shape) - 1))
 
@@ -26,17 +25,42 @@ def get_activations(features_dir, exemplar_count, output_filename):
     filter_activations = np.zeros((num_examples, num_filters))
 
     # Load in this batch of features for all examples
-    for i in tqdm(range(num_examples), desc="Loading features"):
-        features = np.load(features_filename(i))["data"]
+    example_indexes = []
+    for i, filename in tqdm(enumerate(os.listdir(features_dir)),
+            total=num_examples, desc="Loading features"):
+
+        # Store a link from the example's index in the numpy array
+        # and the index of the example in the features directory.       
+        example_index = int(os.path.splitext(filename)[0])
+        example_indexes.append(example_index)
+
+        # Load the features for this example
+        path = os.path.join(features_dir, filename)
+        features = np.load(path)["data"]
+
+        # Compute the activations for the example's features
         example_filter_averages = np.average(features, axis=within_filter_axes)
         filter_activations[i] = example_filter_averages
 
+    # Iterate through each filter, with a sorted list of which rows maximize each one.
+    # Remember that these row indexes need to be mapped back to example indexes
+    # in the original feature directory.
     print("Writing exemplars to file...", end="")
-    for fi, example_ranks in enumerate(filter_activations.argsort(axis=0).T):
-        exemplars = example_ranks[::-1][:exemplar_count]
-        output_file.write("%d: %s\n" % (fi, exemplars))
-    print("done.")
+    for filter_index, example_ranks in enumerate(filter_activations.argsort(axis=0).T):
 
+        # Extract the top N exemplars that maximize each filter
+        exemplar_rows = example_ranks[::-1][:exemplar_count]
+
+        # Find out the example indexes for each row in the maximizing rows
+        exemplars = [example_indexes[row_index] for row_index in exemplar_rows]
+
+        # Write list of exemplars to file
+        output_file.write("%d: [" % (filter_index,))
+        for exemplar in exemplars:
+            output_file.write("%d " % (exemplar,))
+        output_file.write("]\n")
+
+    print("done.")
     output_file.close()
 
 
