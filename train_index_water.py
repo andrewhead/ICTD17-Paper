@@ -16,7 +16,7 @@ from sklearn.externals import joblib
 
 from util.geometry import MapGeometry
 from util.load_data import read_wealth_records, read_education_records,\
-    get_map_from_i_j_to_example_index
+    read_water_records, get_map_from_i_j_to_example_index
 
 
 def get_features_for_clusters(records, features_dir, i_j_to_example_index_map, map_geometry):
