@@ -20,7 +20,8 @@ def load_test_indexes(test_index_filename):
     test_indexes = []
     with open(test_index_filename) as test_index_file:
         for line in test_index_file:
-            test_indexes.append(int(line.strip()))
+            if len(line.strip()) > 0:
+                test_indexes.append(int(line.strip()))
     return test_indexes
 
 

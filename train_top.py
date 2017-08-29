@@ -1,6 +1,7 @@
 import keras
 from keras import backend as K
-from keras.models import Sequential
+from keras.callbacks import EarlyStopping
+from keras.models import Sequential, load_model
 from keras.layers import Activation, Dense, Dropout, Flatten, Reshape
 from keras.layers.convolutional import Conv2D
 from keras.layers.pooling import AveragePooling2D
@@ -70,13 +71,18 @@ def make_jean_top(num_classes=3):
     return model
 
 
-def train(features_dir, labels, test_indexes, batch_size, sample_size,
+def train(features_dir, top_model_filename, labels, batch_size, sample_size,
         learning_rate, epochs, kfolds, training_indexes_filename,
         verbose=False, num_classes=3):
 
-    if verbose:
-        print("Building model of top of net...", end="")
-    model = make_jean_top()
+    if top_model_filename is not None:
+        if verbose:
+            print("Loading model of top of net...", end="")
+        model = load_model(top_model_filename)
+    else:
+        if verbose:
+            print("Building model of top of net...", end="")
+        model = make_jean_top()
     if verbose:
         print("done.")
 
@@ -106,7 +112,7 @@ def train(features_dir, labels, test_indexes, batch_size, sample_size,
     # Convert labels to one-hot array for use in training.
     label_array = keras.utils.to_categorical(labels, num_classes)
 
-    # Here, we fit the neural network for each fold
+    # Only train for one of the fold, to better replicate Xie et al.
     for i, fold in enumerate(folds, start=1):
 
         training_examples = fold["training"]
@@ -125,11 +131,14 @@ def train(features_dir, labels, test_indexes, batch_size, sample_size,
             verbose=(1 if verbose else 0),
             validation_data=FeatureExampleGenerator(validation_examples, features_dir, label_array, batch_size),
             validation_steps=math.ceil(float(len(validation_examples)) / batch_size),
+            callbacks=[EarlyStopping(monitor='val_loss', patience=2)],
         )
         if not os.path.exists("models"):
             os.makedirs("models")
         model.save(os.path.join(
             "models", "model-" + strftime("%Y%m%d-%H%M%S", gmtime()) + ".h5"))
+
+        break
  
 
 if __name__ == "__main__":
@@ -138,11 +147,10 @@ if __name__ == "__main__":
     argument_parser.add_argument("features_dir")
     argument_parser.add_argument("csvfile", help="CSV containing labels")
     argument_parser.add_argument(
-        "test_index_file",
-        help="Name of file that has index of test sample on each line")
-    argument_parser.add_argument(
         "-v", action="store_true",
         help="Print out detailed info about progress.")
+    argument_parser.add_argument("--top-model", help="H5 for previously trained " +
+        "top layers of the neural network.")
     argument_parser.add_argument(
         "--batch-size", default=16, type=int, help="Number of training examples at a time. " +
         "More than 16 at a time seems to lead to out-of-memory errors on K80")
@@ -150,19 +158,18 @@ if __name__ == "__main__":
         "--sample-size", default=10000, type=int,
         help="Number of images to sample from each class (avoid biasing smaller classes).")
     argument_parser.add_argument("--learning-rate", default=0.01, type=float)
-    argument_parser.add_argument("--epochs", default=10, type=int)
-    argument_parser.add_argument("--num-folds", default=3, type=int)
+    argument_parser.add_argument("--epochs", default=50, type=int)
+    argument_parser.add_argument("--num-folds", default=10, type=int)
     argument_parser.add_argument("--training-indexes-file", help="File containing " +
         "an index of a training example on each line.  Useful if you only have " +
         "features extracted for a subset of the examples.")
     args = argument_parser.parse_args()
 
-    test_indexes = load_test_indexes(args.test_index_file)
     labels = load_labels(args.csvfile)
     train(
         args.features_dir,
+        args.top_model,
         labels,
-        test_indexes,
         epochs=args.epochs,
         sample_size=args.sample_size,
         batch_size=args.batch_size,
