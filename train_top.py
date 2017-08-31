@@ -2,23 +2,17 @@ import keras
 from keras import backend as K
 from keras.callbacks import EarlyStopping
 from keras.models import Sequential, load_model
-from keras.layers import Activation, Dense, Dropout, Flatten, Reshape
+from keras.layers import Activation, Dense, Dropout, Flatten
 from keras.layers.convolutional import Conv2D
 from keras.layers.pooling import AveragePooling2D
-from keras.preprocessing import image
-from keras_models.vgg16 import VGG16
 from keras.optimizers import SGD
 
-import numpy as np
-
 import math
-import csv
 from argparse import ArgumentParser
 import os.path
-from time import gmtime, strftime
 
-from util.load_data import load_labels, load_test_indexes
-from util.sample import get_folds, get_training_examples, FeatureExampleGenerator
+from util.load_data import load_labels
+from util.sample import FeatureExampleGenerator
 
 
 # To the best of my ability, this creates the top layers of a neural network
@@ -71,9 +65,9 @@ def make_jean_top(num_classes=3):
     return model
 
 
-def train(features_dir, top_model_filename, labels, batch_size, sample_size,
-        learning_rate, epochs, kfolds, training_indexes_filename,
-        verbose=False, num_classes=3):
+def train(features_dir, top_model_filename, labels, batch_size,
+        learning_rate, epochs, training_indexes_filename,
+        validation_indexes_filename, verbose=False, num_classes=3):
 
     if top_model_filename is not None:
         if verbose:
@@ -88,40 +82,39 @@ def train(features_dir, top_model_filename, labels, batch_size, sample_size,
 
     if verbose:
         print("Compiling model...", end="")
+
+    sgd = SGD(lr=learning_rate, momentum=0.9)
     model.compile(
         loss=keras.losses.categorical_crossentropy,
-        optimizer=SGD(lr=learning_rate),
+        optimizer=sgd,
         metrics=['accuracy'],
     )
     if verbose:
         print("done.")
 
     # Sample for training indexes, or load from file
-    if training_indexes_filename is not None:
-        sampled_examples = []
-        with open(training_indexes_filename) as training_indexes_file:
-            for line in training_indexes_file:
-                sampled_examples.append(int(line.strip()))
-    else:
-        sampled_examples = get_training_examples(
-            features_dir, labels, test_indexes, sample_size)
-
-    # Divide the sampled training data into folds
-    folds = get_folds(sampled_examples, kfolds)
+    training_examples = []
+    validation_examples = []
+    with open(training_indexes_filename) as training_indexes_file:
+        for line in training_indexes_file:
+            training_examples.append(int(line.strip()))
+    with open(validation_indexes_filename) as validation_indexes_file:
+        for line in validation_indexes_file:
+            validation_examples.append(int(line.strip()))
 
     # Convert labels to one-hot array for use in training.
     label_array = keras.utils.to_categorical(labels, num_classes)
 
     # Only train for one of the fold, to better replicate Xie et al.
-    for i, fold in enumerate(folds, start=1):
+    if verbose:
+        print("Training set size: %d" % (len(training_examples)))
+        print("Validation set size: %d" % (len(validation_examples)))
 
-        training_examples = fold["training"]
-        validation_examples = fold["validation"]
-
-        if verbose:
-            print("Training on fold %d of %d" % (i, len(folds)))
-            print("Training set size: %d" % (len(training_examples)))
-            print("Validation set size: %d" % (len(validation_examples)))
+    # Keep decreasing the learning rate until we reach a very small learning rate.
+    # Each time, go until a maximum number of epochs or until the validation loss
+    # stops noticeably decreasing.
+    start_learning_rate = learning_rate
+    while learning_rate >= .00001:
 
         # Do the actual fitting here
         model.fit_generator(
@@ -133,13 +126,27 @@ def train(features_dir, top_model_filename, labels, batch_size, sample_size,
             validation_steps=math.ceil(float(len(validation_examples)) / batch_size),
             callbacks=[EarlyStopping(monitor='val_loss', patience=2)],
         )
-        if not os.path.exists("models"):
-            os.makedirs("models")
-        model.save(os.path.join(
-            "models", "model-" + strftime("%Y%m%d-%H%M%S", gmtime()) + ".h5"))
 
-        break
+        save_model(model, batch_size, start_learning_rate, learning_rate)
+        learning_rate = learning_rate / 2
+        print("Had learning rate", K.get_value(sgd.lr), ", now changing to", learning_rate)
+        K.set_value(sgd.lr, learning_rate)
  
+
+def save_model(model, batch_size, start_learning_rate, learning_rate, suffix=""):
+    if not os.path.exists("models"):
+        os.makedirs("models")
+    model.save(os.path.join(
+        "models", (
+            "model-trained-top-" +
+            "-bs-" + str(batch_size) +
+            "-slr-" + str(start_learning_rate) +
+            "-lr-" + str(learning_rate) +
+            suffix + 
+            ".h5"
+        )
+    ))
+
 
 if __name__ == "__main__":
 
@@ -154,14 +161,13 @@ if __name__ == "__main__":
     argument_parser.add_argument(
         "--batch-size", default=16, type=int, help="Number of training examples at a time. " +
         "More than 16 at a time seems to lead to out-of-memory errors on K80")
-    argument_parser.add_argument(
-        "--sample-size", default=10000, type=int,
-        help="Number of images to sample from each class (avoid biasing smaller classes).")
     argument_parser.add_argument("--learning-rate", default=0.01, type=float)
     argument_parser.add_argument("--epochs", default=50, type=int)
-    argument_parser.add_argument("--num-folds", default=10, type=int)
     argument_parser.add_argument("--training-indexes-file", help="File containing " +
         "an index of a training example on each line.  Useful if you only have " +
+        "features extracted for a subset of the examples.")
+    argument_parser.add_argument("--validation-indexes-file", help="File containing " +
+        "an index of a validation example on each line.  Useful if you only have " +
         "features extracted for a subset of the examples.")
     args = argument_parser.parse_args()
 
@@ -171,10 +177,10 @@ if __name__ == "__main__":
         args.top_model,
         labels,
         epochs=args.epochs,
-        sample_size=args.sample_size,
         batch_size=args.batch_size,
-        kfolds=args.num_folds,
         learning_rate=args.learning_rate,
         training_indexes_filename=args.training_indexes_file,
+        validation_indexes_filename=args.validation_indexes_file,
         verbose=args.v,
+        batch_normalization=args.batch_normalization,
     )
