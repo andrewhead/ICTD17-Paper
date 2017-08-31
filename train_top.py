@@ -1,18 +1,20 @@
 import keras
 from keras import backend as K
-from keras.callbacks import EarlyStopping
+from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras.models import Sequential, load_model
 from keras.layers import Activation, Dense, Dropout, Flatten
 from keras.layers.convolutional import Conv2D
 from keras.layers.pooling import AveragePooling2D
 from keras.optimizers import SGD
 
+from time import gmtime, strftime
 import math
 from argparse import ArgumentParser
 import os.path
+import glob
 
 from util.load_data import load_labels
-from util.sample import FeatureExampleGenerator
+from util.sample import FeatureExampleGenerator, sample_by_class
 
 
 # To the best of my ability, this creates the top layers of a neural network
@@ -66,8 +68,10 @@ def make_jean_top(num_classes=3):
 
 
 def train(features_dir, top_model_filename, labels, batch_size,
-        learning_rate, epochs, training_indexes_filename,
+        learning_rate, momentum, epochs, training_indexes_filename,
         validation_indexes_filename, verbose=False, num_classes=3):
+
+    START_TIMESTAMP = strftime("%Y%m%d-%H%M%S", gmtime())
 
     if top_model_filename is not None:
         if verbose:
@@ -83,7 +87,7 @@ def train(features_dir, top_model_filename, labels, batch_size,
     if verbose:
         print("Compiling model...", end="")
 
-    sgd = SGD(lr=learning_rate, momentum=0.9)
+    sgd = SGD(lr=learning_rate, momentum=momentum)
     model.compile(
         loss=keras.losses.categorical_crossentropy,
         optimizer=sgd,
@@ -93,14 +97,28 @@ def train(features_dir, top_model_filename, labels, batch_size,
         print("done.")
 
     # Sample for training indexes, or load from file
-    training_examples = []
-    validation_examples = []
+    training_examples_base = []
+    validation_examples_base = []
     with open(training_indexes_filename) as training_indexes_file:
         for line in training_indexes_file:
-            training_examples.append(int(line.strip()))
+            training_examples_base.append(int(line.strip()))
     with open(validation_indexes_filename) as validation_indexes_file:
         for line in validation_indexes_file:
-            validation_examples.append(int(line.strip()))
+            validation_examples_base.append(int(line.strip()))
+
+    # Upsample the training and validation sets to have equal representation
+    # of all of the classes.
+    count_training_0_labels = 0
+    for example in training_examples_base:
+        if labels[example] == '0':
+            count_training_0_labels += 1
+    count_validation_0_labels = 0
+    for example in validation_examples_base:
+        if labels[example] == '0':
+            count_validation_0_labels += 1
+    
+    training_examples = sample_by_class(training_examples_base, labels, count_training_0_labels)
+    validation_examples = sample_by_class(validation_examples_base, labels, count_validation_0_labels)
 
     # Convert labels to one-hot array for use in training.
     label_array = keras.utils.to_categorical(labels, num_classes)
@@ -124,31 +142,54 @@ def train(features_dir, top_model_filename, labels, batch_size,
             verbose=(1 if verbose else 0),
             validation_data=FeatureExampleGenerator(validation_examples, features_dir, label_array, batch_size),
             validation_steps=math.ceil(float(len(validation_examples)) / batch_size),
-            callbacks=[EarlyStopping(monitor='val_loss', patience=2)],
+            callbacks=[
+                EarlyStopping(monitor='val_loss', patience=0),
+                ModelCheckpoint(
+                    get_best_model_filename(learning_rate, START_TIMESTAMP),
+                    save_best_only=True,
+                    monitor='val_loss',
+                    mode='min',
+                    period=1,                   
+                ),
+            ],
         )
 
-        save_model(model, batch_size, start_learning_rate, learning_rate)
+        # Load the best model from the last round of fitting
+        if verbose:
+            print("Loading best model from last round,", get_best_model_filename(learning_rate, START_TIMESTAMP), "...", end="")
+
+        model = load_model(get_best_model_filename(learning_rate, START_TIMESTAMP))
+        if verbose:
+            print("done.")
+        sgd = SGD(lr=learning_rate, momentum=momentum)
+        model.compile(
+            loss=keras.losses.categorical_crossentropy,
+            optimizer=sgd,
+            metrics=['accuracy'],
+        )
+        if verbose:
+            print("Re-compiled model.")
+
+        # Halve the learning rate for the next cycle
         learning_rate = learning_rate / 2
-        print("Had learning rate", K.get_value(sgd.lr), ", now changing to", learning_rate)
+        if verbose:
+            print("Had learning rate", K.get_value(sgd.lr), ", now changing to", learning_rate)
         K.set_value(sgd.lr, learning_rate)
  
 
-def save_model(model, batch_size, start_learning_rate, learning_rate, suffix=""):
-    if not os.path.exists("models"):
-        os.makedirs("models")
-    model.save(os.path.join(
-        "models", (
-            "model-trained-top-" +
-            "-bs-" + str(batch_size) +
-            "-slr-" + str(start_learning_rate) +
-            "-lr-" + str(learning_rate) +
-            suffix + 
-            ".h5"
-        )
-    ))
+def get_best_model_filename(learning_rate, timestamp):
+    return os.path.join(
+        'models', (
+            'trained-top.' + timestamp +
+            '.lr-' + str(learning_rate) + 
+            '.h5'
+        ))
 
 
 if __name__ == "__main__":
+
+    if not os.path.exists("models"):
+        os.makedirs("models")
 
     argument_parser = ArgumentParser(description="Train top layers of neural net")
     argument_parser.add_argument("features_dir")
@@ -162,6 +203,7 @@ if __name__ == "__main__":
         "--batch-size", default=16, type=int, help="Number of training examples at a time. " +
         "More than 16 at a time seems to lead to out-of-memory errors on K80")
     argument_parser.add_argument("--learning-rate", default=0.01, type=float)
+    argument_parser.add_argument("--momentum", default=0.5, type=float)
     argument_parser.add_argument("--epochs", default=50, type=int)
     argument_parser.add_argument("--training-indexes-file", help="File containing " +
         "an index of a training example on each line.  Useful if you only have " +
@@ -179,8 +221,8 @@ if __name__ == "__main__":
         epochs=args.epochs,
         batch_size=args.batch_size,
         learning_rate=args.learning_rate,
+        momentum=args.momentum,
         training_indexes_filename=args.training_indexes_file,
         validation_indexes_filename=args.validation_indexes_file,
         verbose=args.v,
-        batch_normalization=args.batch_normalization,
     )
