@@ -1,27 +1,29 @@
 import keras
+from keras import backend as K
+from keras.callbacks import EarlyStopping, ModelCheckpoint, Callback
 from keras.models import Sequential, load_model
 from keras.layers.convolutional import Conv2D
 from keras.layers.pooling import MaxPooling2D
 from keras.optimizers import SGD
 from keras.utils.data_utils import get_file
 
-import numpy as np
-
 import math
 from argparse import ArgumentParser
-import os.path
 from time import gmtime, strftime
+import os.path
 
 from util.load_data import load_labels, load_test_indexes
-from util.sample import get_folds, get_training_examples, FeatureExampleGenerator
+from util.sample import FeatureExampleGenerator
 
 
 BLOCK5_WEIGHTS = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.1/vgg16_weights_tf_dim_ordering_tf_kernels_notop.h5'
 
 
-def train(features_dir, top_model_filename, labels, test_indexes, batch_size, sample_size,
-        learning_rate, momentum, epochs, kfolds, training_indexes_filename,
-        verbose=False, num_classes=3):
+def train(features_dir, top_model_filename, labels, batch_size,
+        learning_rate, momentum, epochs, training_indexes_filename,
+        validation_indexes_filename, verbose=False, num_classes=3):
+
+    START_TIMESTAMP = strftime("%Y%m%d-%H%M%S", gmtime())
 
     if verbose:
         print("Creating block 5 of VGG16..", end="")
@@ -84,58 +86,122 @@ def train(features_dir, top_model_filename, labels, test_indexes, batch_size, sa
 
     if verbose:
         print("Compiling model...", end="")
+    sgd = SGD(lr=learning_rate, momentum=momentum)
     model.compile(
         loss=keras.losses.categorical_crossentropy,
         # Note: this learning rate should be pretty low (e.g., 1e-4, as
         # recommended in the referenced blog post, to keep previously-
         # learned features in tact.  Reference:
         # https://blog.keras.io/building-powerful-image-classification-models-using-very-little-data.html
-        optimizer=SGD(lr=learning_rate, momentum=momentum),
+        optimizer=sgd,
         metrics=['accuracy'],
     )
     if verbose:
         print("done.")
 
-    # Sample for training indexes, or load from file
-    if training_indexes_filename is not None:
-        sampled_examples = []
-        with open(training_indexes_filename) as training_indexes_file:
-            for line in training_indexes_file:
-                sampled_examples.append(int(line.strip()))
-    else:
-        sampled_examples = get_training_examples(
-            features_dir, labels, test_indexes, sample_size)
-
-    # Divide the sampled training data into folds
-    folds = get_folds(sampled_examples, kfolds)
+    # Load training and validation indexes from file
+    training_examples = []
+    validation_examples = []
+    with open(training_indexes_filename) as training_indexes_file:
+        for line in training_indexes_file:
+            training_examples.append(int(line.strip()))
+    with open(validation_indexes_filename) as validation_indexes_file:
+        for line in validation_indexes_file:
+            validation_examples.append(int(line.strip()))
 
     # Convert labels to one-hot array for use in training.
     label_array = keras.utils.to_categorical(labels, num_classes)
 
-    # Here, we fit the neural network for each fold
-    for i, fold in enumerate(folds, start=1):
+    if verbose:
+        print("Training set size: %d" % (len(training_examples)))
+        print("Validation set size: %d" % (len(validation_examples)))
 
-        training_examples = fold["training"]
-        validation_examples = fold["validation"]
+    # Sanity check to make sure that the first validation loss of a new epoch
+    # has actually changed relative to the end of the last epoch.
+    class StopIfValLossStationary(Callback):
 
-        if verbose:
-            print("Training on fold %d of %d" % (i, len(folds)))
-            print("Training set size: %d" % (len(training_examples)))
-            print("Validation set size: %d" % (len(validation_examples)))
+        def __init__(self, val_loss):
+            self.val_loss = val_loss
+
+        def on_epoch_end(self, epoch, logs=None):
+            current_val_loss = logs.get('val_loss')
+            if epoch == 0 and self.val_loss is not None and abs(current_val_loss - self.val_loss) < .00001:
+                self.model.stop_training = True
+                print("Val loss didn't change, stopping")
+
+    # Keep decreasing the learning rate until we reach a very small learning rate.
+    # Each time, go until a maximum number of epochs or until the validation loss
+    # stops noticeably decreasing.
+    last_val_loss = None
+    start_learning_rate = learning_rate
+    while learning_rate >= .00001:
 
         # Do the actual fitting here
-        model.fit_generator(
+        history = model.fit_generator(
             FeatureExampleGenerator(training_examples, features_dir, label_array, batch_size),
             steps_per_epoch=math.ceil(float(len(training_examples)) / batch_size),
+            # steps_per_epoch=1,
             epochs=epochs,
+            # epochs=3,
             verbose=(1 if verbose else 0),
             validation_data=FeatureExampleGenerator(validation_examples, features_dir, label_array, batch_size),
             validation_steps=math.ceil(float(len(validation_examples)) / batch_size),
+            # validation_steps=1,
+            callbacks=[
+                EarlyStopping(monitor='val_loss', patience=0),
+                ModelCheckpoint(
+                    get_best_model_filename(learning_rate, START_TIMESTAMP),
+                    save_best_only=True,
+                    monitor='val_loss',
+                    mode='min',
+                    period=1,                   
+                ),
+                StopIfValLossStationary(last_val_loss),
+            ],
         )
-        if not os.path.exists("models"):
-            os.makedirs("models")
-        model.save(os.path.join(
-            "models", "tuned-" + strftime("%Y%m%d-%H%M%S", gmtime()) + ".h5"))
+
+        last_val_loss = history.history['val_loss'][-1]
+        if verbose:
+            print("Saving last val_loss", last_val_loss)
+        if verbose:
+            print("Loading best model from last round,", get_best_model_filename(learning_rate, START_TIMESTAMP), "...", end="")
+
+        # Clear out existing models.  If we don't do this, we get an out-of-memory error
+        # after loading a few models.
+        K.clear_session()
+        model = load_model(get_best_model_filename(learning_rate, START_TIMESTAMP))
+        if verbose:
+            print("done.")
+        sgd = SGD(lr=learning_rate, momentum=momentum)
+        model.compile(
+            loss=keras.losses.categorical_crossentropy,
+            optimizer=sgd,
+            metrics=['accuracy'],
+        )
+        if verbose:
+            print("Re-compiled model.")
+
+        # Halve the learning rate for the next cycle
+        learning_rate = learning_rate / 2
+        if verbose:
+            print("Had learning rate", K.get_value(sgd.lr), ", now changing to", learning_rate)
+        K.set_value(sgd.lr, learning_rate)
+
+    final_filename = os.path.join(
+        "models",
+        "tuned-finished.bs" + str(batch_size) + ".slr-" + str(start_learning_rate) + ".h5"
+    )
+    model.save(final_filename)
+    return final_filename
+ 
+
+def get_best_model_filename(learning_rate, timestamp):
+    return os.path.join(
+        'models', (
+            'fine-tuned.' + timestamp +
+            '.lr-' + str(learning_rate) + 
+            '.h5'
+        ))
  
 
 if __name__ == "__main__":
@@ -146,24 +212,20 @@ if __name__ == "__main__":
         "top layers of the neural network.")
     argument_parser.add_argument("csvfile", help="CSV containing labels")
     argument_parser.add_argument(
-        "test_index_file",
-        help="Name of file that has index of test sample on each line")
-    argument_parser.add_argument(
         "-v", action="store_true",
         help="Print out detailed info about progress.")
     argument_parser.add_argument(
         "--batch-size", default=16, type=int, help="Number of training examples at a time. " +
         "More than 16 at a time seems to lead to out-of-memory errors on K80")
-    argument_parser.add_argument(
-        "--sample-size", default=10000, type=int,
-        help="Number of images to sample from each class (avoid biasing smaller classes).")
     argument_parser.add_argument("--learning-rate", default=0.0001, type=float,
         help="(Should be low, to keep previously learned features in tact.)")
     argument_parser.add_argument("--momentum", default=0.9, type=float)
-    argument_parser.add_argument("--epochs", default=10, type=int)
-    argument_parser.add_argument("--num-folds", default=3, type=int)
+    argument_parser.add_argument("--epochs", default=50, type=int)
     argument_parser.add_argument("--training-indexes-file", help="File containing " +
         "an index of a training example on each line.  Useful if you only have " +
+        "features extracted for a subset of the examples.")
+    argument_parser.add_argument("--validation-indexes-file", help="File containing " +
+        "an index of a validation example on each line.  Useful if you only have " +
         "features extracted for a subset of the examples.")
     args = argument_parser.parse_args()
 
@@ -173,13 +235,11 @@ if __name__ == "__main__":
         features_dir=args.features_dir,
         top_model_filename=args.top_model,
         labels=labels,
-        test_indexes=test_indexes,
         epochs=args.epochs,
-        sample_size=args.sample_size,
         batch_size=args.batch_size,
-        kfolds=args.num_folds,
         learning_rate=args.learning_rate,
         momentum=args.momentum,
         training_indexes_filename=args.training_indexes_file,
+        validation_indexes_filename=args.validation_indexes_file,
         verbose=args.v,
     )

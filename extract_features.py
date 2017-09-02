@@ -136,19 +136,26 @@ def extract_features(model_path, input_dir, layer_name, output_dir,
     elif input_type == "features":
         input_generator = get_features_for_input_features(model, filenames, batch_size)
 
-    for (example_indexes, feature_batch) in tqdm(input_generator, total=expected_batches):
-        if flatten:
-            feature_batch = feature_batch.reshape(feature_batch.shape[0], -1)
-        for example_index, image_features in zip(example_indexes, feature_batch):
-            # It's important to store using `compressed` if you want to save more than
-            # a few hundred images.  Without compression, every 1,000 images will take
-            # about 1GB of memory, which might not scale well for most datasets
-            # Each record is saved to its own file to enable efficient loading without
-            # needing to load all image features into memory during later training.
-            np.savez_compressed(filename(example_index), data=image_features)
+    try:
+        for (example_indexes, feature_batch) in tqdm(input_generator, total=expected_batches):
+            if flatten:
+                feature_batch = feature_batch.reshape(feature_batch.shape[0], -1)
+            for example_index, image_features in zip(example_indexes, feature_batch):
+                # It's important to store using `compressed` if you want to save more than
+                # a few hundred images.  Without compression, every 1,000 images will take
+                # about 1GB of memory, which might not scale well for most datasets
+                # Each record is saved to its own file to enable efficient loading without
+                # needing to load all image features into memory during later training.
+                np.savez_compressed(filename(example_index), data=image_features)
+    # We get a TypeError at the end of feature extraction
+    except TypeError:
+        pass
 
     print("All features have been computed and saved.")
     print("Reload features for each image with: `np.load(<filename>)['data']`")
+
+    # Clear out the current models to save memory for the later steps.
+    K.clear_session()
 
 
 if __name__ == '__main__':

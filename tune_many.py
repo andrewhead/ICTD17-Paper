@@ -5,6 +5,7 @@ from tune_block5 import train
 from extract_features import extract_features
 from train_index_all import train_development
 from util.load_data import load_labels
+from flatten_tuned_model import flatten
 
 
 BLOCK5_WEIGHTS = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.1/vgg16_weights_tf_dim_ordering_tf_kernels_notop.h5'
@@ -32,21 +33,21 @@ if __name__ == "__main__":
     labels = load_labels(args.csvfile)
 
     # Load indexes of examples that will be used in the second step of transfer learning
-    cluster_example_indexes = []
-    with open(os.path.join("indexes", "Haiti_dhs_cluster_indexes")) as indexes_file:
+    cluster_example_indexes = set()
+    with open(os.path.join("indexes", "Haiti_dhs_cluster_indexes.txt")) as indexes_file:
         for line in indexes_file:
             cluster_example_indexes.add(int(line.strip()))
 
     # For each hyper-parameter setting...
-    for learning_rate in [.1, .5, .25, .01, .05, .025, .001, .005, .0025, .0001]:
-        for batch_size in [8, 16, 32, 64, 128, 256]:
+    for learning_rate in [.00001, .0001, .001, .01]:
+        for batch_size in [128, 64, 32, 16, 8]:
             print("Fine tuning with learning rate", learning_rate, "and batch size", batch_size)
             try:
                 # Fine-tune the model
                 final_model_path = train(
                     args.features_dir,
                     args.top_model,
-                    args.labels,
+                    labels,
                     batch_size,
                     learning_rate,
                     0.9,
@@ -61,13 +62,17 @@ if __name__ == "__main__":
                 print("This was for hyperparameters lr", learning_rate, "batch size", batch_size)
                 print("Moving on to the next one")
                 continue
-    
+   
+            print("Flattening the tuned model")
+            flattened_name = final_model_path + ".flattened"
+            flatten(final_model_path, flattened_name)
+
             # Extract features from the final layer (to use for predictions)
-            print("Extracting final layer features for model", final_model_path)
-            output_features_dir = os.path.join("features", "haiti_revamped_vgg16_conv7_flattened_" + str(batch_size) + "_" + str(learning_rate)),
+            print("Extracting final layer features for model", flattened_name)
+            output_features_dir = os.path.join("features", "haiti_revamp_vgg16_conv7_flattened_" + str(batch_size) + "_" + str(learning_rate))
             extract_features(
-                model_path=final_model_path,
-                input_dir=os.path.join("features", "haiti_revamped_vgg16_block4_pool"),
+                model_path=flattened_name,
+                input_dir=os.path.join("features", "haiti_revamp_vgg16_block4_pool"),
                 layer_name="conv7",
                 output_dir=output_features_dir,
                 flatten=True,
@@ -84,6 +89,6 @@ if __name__ == "__main__":
                 os.path.join("csv", "haiti_cluster_avg_water_nightlights.csv"),
                 os.path.join("csv", "haiti_TL.csv"),
                 os.path.join("nightlights", "F182010.v4d_web.stable_lights.avg_vis.tif"),
-                os.path.join("models", "indexes", "haiti_revamped_vgg16_tuned_" + str(batch_size) + "_" + str(learning_rate)),
+                os.path.join("models", "indexes", "haiti_revamp_vgg16_tuned_" + str(batch_size) + "_" + str(learning_rate)),
                 True,
             )
