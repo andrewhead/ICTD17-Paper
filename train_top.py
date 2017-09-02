@@ -1,6 +1,6 @@
 import keras
 from keras import backend as K
-from keras.callbacks import EarlyStopping, ModelCheckpoint
+from keras.callbacks import Callback, EarlyStopping, ModelCheckpoint
 from keras.models import Sequential, load_model
 from keras.layers import Activation, Dense, Dropout, Flatten
 from keras.layers.convolutional import Conv2D
@@ -15,6 +15,18 @@ import glob
 
 from util.load_data import load_labels
 from util.sample import FeatureExampleGenerator, sample_by_class
+
+
+class StopIfValAccLow(Callback):
+
+    def __init__(self, val_acc):
+        self.val_acc = val_acc
+
+    def on_epoch_end(self, epoch, logs=None):
+        current_val_acc = logs.get('val_acc')
+        if epoch == 0 and self.val_acc is not None and current_val_acc <= self.val_acc:
+            self.model.stop_training = True
+            print("Val accuracy less than", self.val_acc, ": stopping.")
 
 
 # To the best of my ability, this creates the top layers of a neural network
@@ -132,10 +144,11 @@ def train(features_dir, top_model_filename, labels, batch_size,
     # Each time, go until a maximum number of epochs or until the validation loss
     # stops noticeably decreasing.
     start_learning_rate = learning_rate
+    NOT_LEARNING_VAL_ACC = .3350
     while learning_rate >= .00001:
 
         # Do the actual fitting here
-        model.fit_generator(
+        history = model.fit_generator(
             FeatureExampleGenerator(training_examples, features_dir, label_array, batch_size),
             steps_per_epoch=math.ceil(float(len(training_examples)) / batch_size),
             epochs=epochs,
@@ -144,6 +157,7 @@ def train(features_dir, top_model_filename, labels, batch_size,
             validation_steps=math.ceil(float(len(validation_examples)) / batch_size),
             callbacks=[
                 EarlyStopping(monitor='val_loss', patience=0),
+                StopIfValAccLow(NOT_LEARNING_VAL_ACC),  # if the validation accuracy doesn't increas above random, stop
                 ModelCheckpoint(
                     get_best_model_filename(learning_rate, START_TIMESTAMP),
                     save_best_only=True,
@@ -154,13 +168,21 @@ def train(features_dir, top_model_filename, labels, batch_size,
             ],
         )
 
-        # Load the best model from the last round of fitting
-        if verbose:
-            print("Loading best model from last round,", get_best_model_filename(learning_rate, START_TIMESTAMP), "...", end="")
+        last_val_acc = history.history['val_acc'][-1]
+        if last_val_acc <= NOT_LEARNING_VAL_ACC:
+            if verbose:
+                print("Not learning.  Resetting top")
+            K.clear_session()
+            model = make_jean_top()
+        else:
+            # Load the best model from the last round of fitting
+            if verbose:
+                print("Loading best model from last round,", get_best_model_filename(learning_rate, START_TIMESTAMP), "...", end="")
+            K.clear_session()
+            model = load_model(get_best_model_filename(learning_rate, START_TIMESTAMP))
+            if verbose:
+                print("done.")
 
-        model = load_model(get_best_model_filename(learning_rate, START_TIMESTAMP))
-        if verbose:
-            print("done.")
         sgd = SGD(lr=learning_rate, momentum=momentum)
         model.compile(
             loss=keras.losses.categorical_crossentropy,

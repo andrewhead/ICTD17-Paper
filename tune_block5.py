@@ -19,6 +19,20 @@ from util.sample import FeatureExampleGenerator
 BLOCK5_WEIGHTS = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.1/vgg16_weights_tf_dim_ordering_tf_kernels_notop.h5'
 
 
+# Sanity check to make sure that the first validation loss of a new epoch
+# has actually changed relative to the end of the last epoch.
+class StopIfValLossStationary(Callback):
+
+    def __init__(self, val_loss):
+        self.val_loss = val_loss
+
+    def on_epoch_end(self, epoch, logs=None):
+        current_val_loss = logs.get('val_loss')
+        if epoch == 0 and self.val_loss is not None and abs(current_val_loss - self.val_loss) < .00001:
+            self.model.stop_training = True
+            print("Val loss didn't change, stopping")
+
+
 def train(features_dir, top_model_filename, labels, batch_size,
         learning_rate, momentum, epochs, training_indexes_filename,
         validation_indexes_filename, verbose=False, num_classes=3):
@@ -115,19 +129,6 @@ def train(features_dir, top_model_filename, labels, batch_size,
     if verbose:
         print("Training set size: %d" % (len(training_examples)))
         print("Validation set size: %d" % (len(validation_examples)))
-
-    # Sanity check to make sure that the first validation loss of a new epoch
-    # has actually changed relative to the end of the last epoch.
-    class StopIfValLossStationary(Callback):
-
-        def __init__(self, val_loss):
-            self.val_loss = val_loss
-
-        def on_epoch_end(self, epoch, logs=None):
-            current_val_loss = logs.get('val_loss')
-            if epoch == 0 and self.val_loss is not None and abs(current_val_loss - self.val_loss) < .00001:
-                self.model.stop_training = True
-                print("Val loss didn't change, stopping")
 
     # Keep decreasing the learning rate until we reach a very small learning rate.
     # Each time, go until a maximum number of epochs or until the validation loss
