@@ -230,7 +230,6 @@ if __name__ == "__main__":
         "features extracted for a subset of the examples.")
     args = argument_parser.parse_args()
 
-    test_indexes = load_test_indexes(args.test_index_file)
     labels = load_labels(args.csvfile)
     train(
         features_dir=args.features_dir,
