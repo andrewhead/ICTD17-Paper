@@ -135,7 +135,7 @@ def train(features_dir, top_model_filename, labels, batch_size,
     # stops noticeably decreasing.
     last_val_loss = None
     start_learning_rate = learning_rate
-    while learning_rate >= .00001:
+    while learning_rate >= .0000000001:
 
         # Do the actual fitting here
         history = model.fit_generator(
@@ -149,7 +149,7 @@ def train(features_dir, top_model_filename, labels, batch_size,
             validation_steps=math.ceil(float(len(validation_examples)) / batch_size),
             # validation_steps=1,
             callbacks=[
-                EarlyStopping(monitor='val_loss', patience=0),
+                EarlyStopping(monitor='val_loss', patience=1),
                 ModelCheckpoint(
                     get_best_model_filename(learning_rate, START_TIMESTAMP),
                     save_best_only=True,
@@ -183,7 +183,7 @@ def train(features_dir, top_model_filename, labels, batch_size,
             print("Re-compiled model.")
 
         # Halve the learning rate for the next cycle
-        learning_rate = learning_rate / 2
+        learning_rate = learning_rate / 10
         if verbose:
             print("Had learning rate", K.get_value(sgd.lr), ", now changing to", learning_rate)
         K.set_value(sgd.lr, learning_rate)
