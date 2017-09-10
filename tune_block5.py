@@ -13,7 +13,7 @@ from time import gmtime, strftime
 import os.path
 
 from util.load_data import load_labels, load_test_indexes
-from util.sample import FeatureExampleGenerator
+from util.sample import FeatureExampleGenerator, sample_by_class
 
 
 BLOCK5_WEIGHTS = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.1/vgg16_weights_tf_dim_ordering_tf_kernels_notop.h5'
@@ -114,14 +114,28 @@ def train(features_dir, top_model_filename, labels, batch_size,
         print("done.")
 
     # Load training and validation indexes from file
-    training_examples = []
-    validation_examples = []
+    training_examples_base = []
+    validation_examples_base = []
     with open(training_indexes_filename) as training_indexes_file:
         for line in training_indexes_file:
-            training_examples.append(int(line.strip()))
+            training_examples_base.append(int(line.strip()))
     with open(validation_indexes_filename) as validation_indexes_file:
         for line in validation_indexes_file:
-            validation_examples.append(int(line.strip()))
+            validation_examples_base.append(int(line.strip()))
+
+    # Upsample the training and validation sets to have equal representation
+    # of all of the classes.
+    count_training_0_labels = 0
+    for example in training_examples_base:
+        if labels[example] == '0':
+            count_training_0_labels += 1
+    count_validation_0_labels = 0
+    for example in validation_examples_base:
+        if labels[example] == '0':
+            count_validation_0_labels += 1
+    
+    training_examples = sample_by_class(training_examples_base, labels, count_training_0_labels)
+    validation_examples = sample_by_class(validation_examples_base, labels, count_validation_0_labels)
 
     # Convert labels to one-hot array for use in training.
     label_array = keras.utils.to_categorical(labels, num_classes)
@@ -135,7 +149,7 @@ def train(features_dir, top_model_filename, labels, batch_size,
     # stops noticeably decreasing.
     last_val_loss = None
     start_learning_rate = learning_rate
-    while learning_rate >= .00001:
+    while learning_rate >= .0000000001:
 
         # Do the actual fitting here
         history = model.fit_generator(
@@ -149,7 +163,7 @@ def train(features_dir, top_model_filename, labels, batch_size,
             validation_steps=math.ceil(float(len(validation_examples)) / batch_size),
             # validation_steps=1,
             callbacks=[
-                EarlyStopping(monitor='val_loss', patience=0),
+                EarlyStopping(monitor='val_loss', patience=1),
                 ModelCheckpoint(
                     get_best_model_filename(learning_rate, START_TIMESTAMP),
                     save_best_only=True,
@@ -183,7 +197,7 @@ def train(features_dir, top_model_filename, labels, batch_size,
             print("Re-compiled model.")
 
         # Halve the learning rate for the next cycle
-        learning_rate = learning_rate / 2
+        learning_rate = learning_rate / 10
         if verbose:
             print("Had learning rate", K.get_value(sgd.lr), ", now changing to", learning_rate)
         K.set_value(sgd.lr, learning_rate)
