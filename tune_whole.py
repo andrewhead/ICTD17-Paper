@@ -91,6 +91,19 @@ def init_model(top_model_filename, learning_rate, momentum, verbose=False):
     if verbose:
         print("done.")
 
+    return model
+
+
+def train(top_model_filename, old_model_filename, epochs, batch_size, learning_rate, momentum, verbose=False):
+
+    START_TIMESTAMP = strftime("%Y%m%d-%H%M%S", gmtime())
+
+    model = None
+    if top_model_filename and not old_model_filename:
+        model = init_model(top_model_filename, learning_rate, momentum, verbose=verbose)
+    elif old_model_filename and not top_model_filename:
+        model = load_model(old_model_filename)
+
     if verbose:
         print("Compiling model...", end="")
     sgd = SGD(lr=learning_rate, momentum=momentum)
@@ -105,14 +118,6 @@ def init_model(top_model_filename, learning_rate, momentum, verbose=False):
     )
     if verbose:
         print("done.")
-
-    return model
-
-
-def train(top_model_filename, epochs, batch_size, learning_rate, momentum, verbose=False):
-
-    model = init_model(top_model_filename, learning_rate, momentum, verbose=verbose)
-    START_TIMESTAMP = strftime("%Y%m%d-%H%M%S", gmtime())
 
     generator = ImageDataGenerator()
     training_data = generator.flow_from_directory(
@@ -131,7 +136,7 @@ def train(top_model_filename, epochs, batch_size, learning_rate, momentum, verbo
     # stops noticeably decreasing.
     last_val_loss = None
     start_learning_rate = learning_rate
-    while learning_rate >= .000000001:
+    while learning_rate >= .0000000001:
 
         # Do the actual fitting here
         history = model.fit_generator(
@@ -204,8 +209,10 @@ def get_best_model_filename(learning_rate, timestamp):
 if __name__ == "__main__":
 
     argument_parser = ArgumentParser(description="Train the whole neural net")
-    argument_parser.add_argument("top_model", help="H5 for previously trained " +
+    argument_parser.add_argument("--top-model", help="H5 for previously trained " +
         "top layers of the neural network.")
+    argument_parser.add_argument("--old-model", help="H5 for previously trained " +
+        "entire network.")
     argument_parser.add_argument(
         "-v", action="store_true",
         help="Print out detailed info about progress.")
@@ -220,6 +227,7 @@ if __name__ == "__main__":
 
     train(
         top_model_filename=args.top_model,
+        old_model_filename=args.old_model,
         epochs=args.epochs,
         batch_size=args.batch_size,
         learning_rate=args.learning_rate,
