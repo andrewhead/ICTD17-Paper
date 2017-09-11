@@ -3,9 +3,7 @@ Problem Set 1 teacher-provided boilerplate and our code.  There's a lot
 of logic for clustering images that we didn't want to invent twice. """
 
 import argparse
-from osgeo import gdal, ogr, osr
 import numpy as np
-import csv
 import os.path
 from tqdm import tqdm
 
@@ -85,24 +83,132 @@ def get_features_for_clusters(records, features_dir, i_j_to_example_index_map, m
     return avg_features, records_without_any_images
 
 
-def predict(features, y, output_filename):
+def predict(features, y, Xtest, ytest, output_filename):
     # This method assumes you have already split the data into
     # test data and training data, and are only passing in training data.
+    features = np.array(features)
+    y = np.array(y)
+    Xtest = np.array(Xtest)
+    ytest = np.array(ytest)
 
-    # Do cross-validation for this model
-    ridge = Ridge()
-    r2_values = cross_val_score(ridge, features, y, cv=5, scoring='r2')
-    print("Cross-validation results:")
-    print("All R^2:", r2_values)
-    print("Average R^2:", np.average(r2_values))
+    from sklearn.model_selection import KFold
+
+    for i, (train_index, val_index) in enumerate(KFold(n_splits=5).split(features)):
+
+        print("On fold", i)
+        Xtrain = features[train_index]
+        ytrain = y[train_index]
+        Xval = features[val_index]
+        yval = y[val_index]
+
+        # Discover best regularsization parameter for this fold
+        best_score = -100
+        best_alpha = -1
+        for alpha in np.logspace(-3, 5, 50, base=10):
+            ridge = Ridge(alpha=alpha)
+            ridge.fit(Xtrain, ytrain)
+            score = ridge.score(Xval, yval)
+            if score > best_score:
+                best_alpha = alpha
+                best_score = score
+        print("Stage I best score", best_score, "for alpha", best_alpha)
+
+        tuned_score = -100
+        tuned_alpha = -1
+        for alpha in np.logspace(np.log10(best_alpha / 2), np.log10(best_alpha * 2), 50, base=10):
+            ridge = Ridge(alpha=alpha)
+            ridge.fit(Xtrain, ytrain)
+            score = ridge.score(Xval, yval)
+            if score > tuned_score:
+                tuned_alpha = alpha
+                tuned_score = score
+        print("Stage II best score", tuned_score, "for alpha", tuned_alpha)
+
+        # Run on the hold-out test set
+        ridge = Ridge(alpha=tuned_alpha)
+        ridge.fit(features, y)
+        print("Test best score:", ridge.score(Xtest, ytest))
 
     # Retrain the model on all training data, and dump it to a file for later
-    ridge = Ridge()
-    ridge.fit(features, y)
     print("Saving trained model to file ", output_filename)
     joblib.dump(ridge, output_filename)
 
     return ridge
+
+
+def train_development(features_dir, wealth_csv, education_csv, water_csv,
+    nightlights_csv, nightlights_raster, output_basename, v):
+
+    if v:
+        print("Loading map geometry...", end="")
+    map_geometry = MapGeometry(nightlights_raster)
+    if v:
+        print(".")
+    i_j_to_example_index_map = get_map_from_i_j_to_example_index(nightlights_csv)
+ 
+    # Predict wealth
+    if v:
+        print("Preparing for wealth predictions.")
+    wealth_records = read_wealth_records(args.wealth_csv)
+    y_wealth = [r['wealth'] for r in wealth_records]
+    X_wealth, records_to_discard = get_features_for_clusters(
+        records=wealth_records,
+        features_dir=args.features_dir,
+        i_j_to_example_index_map=i_j_to_example_index_map,
+        map_geometry=map_geometry,
+    )
+    # Some of the clusters might not have any images.  Just discard the
+    # prediction for these ones, don't factor it into the model.  Make
+    # sure to discard in reverse, so we don't mess up the indexing
+    # for discarding later records after discarding earlier records.
+    for i in reversed(records_to_discard):
+        del(y_wealth[i])
+    X_wealth_train, X_wealth_test, y_wealth_train, y_wealth_test = (
+        train_test_split(X_wealth, y_wealth, test_size=0.25, random_state=None))
+    print("Now predicting wealth...")
+    wealth_model = predict(X_wealth_train, y_wealth_train,
+        X_wealth_test, y_wealth_test,
+        args.output_basename + "_wealth.pkl")
+
+    # Predict education
+    if v:
+        print("Preparing for education predictions.")
+    education_records = read_education_records(education_csv)
+    y_education = [r['education_index'] for r in education_records]
+    X_education, records_to_discard = get_features_for_clusters(
+        records=education_records,
+        features_dir=features_dir,
+        i_j_to_example_index_map=i_j_to_example_index_map,
+        map_geometry=map_geometry,
+    )
+    for i in reversed(records_to_discard):
+        del(y_education[i])
+    X_education_train, X_education_test, y_education_train, y_education_test = (
+        train_test_split(X_education, y_education, test_size=0.25, random_state=None))
+    print("Now predicting education...")
+    education_model = predict(X_education_train, y_education_train,
+        X_education_test, y_education_test,
+        args.output_basename + "_education.pkl")
+        
+    # Predict Water
+    if v:
+        print("Preparing for water predictions.")
+    water_records = read_water_records(water_csv)
+    y_water = [r['water_index'] for r in water_records]
+    X_water, records_to_discard = get_features_for_clusters(
+        records=water_records,
+        features_dir=features_dir,
+        i_j_to_example_index_map=i_j_to_example_index_map,
+        map_geometry=map_geometry,
+    )
+    for i in reversed(records_to_discard):
+        del(y_water[i])
+    X_water_train, X_water_test, y_water_train, y_water_test = (
+        train_test_split(X_water, y_water, test_size=0.25, random_state=None))
+    print("Now predicting water...")
+    water_model = predict(X_water_train, y_water_train,
+        X_water_test, y_water_test,
+        args.output_basename + "_water.pkl")
 
 
 if __name__ == '__main__':
@@ -145,66 +251,3 @@ if __name__ == '__main__':
         args.output_basename,
         args.v,
     )
-
-
-def train_development(features_dir, wealth_csv, education_csv, water_csv,
-    nightlights_csv, nightlights_raster, output_basename, v):
-
-    if v:
-        print("Loading map geometry...", end="")
-    map_geometry = MapGeometry(nightlights_raster)
-    if v:
-        print(".")
-    i_j_to_example_index_map = get_map_from_i_j_to_example_index(nightlights_csv)
- 
-    # Predict wealth
-    if v:
-        print("Preparing for wealth predictions.")
-    wealth_records = read_wealth_records(wealth_csv)
-    y_wealth = [r['wealth'] for r in wealth_records]
-    X_wealth, records_to_discard = get_features_for_clusters(
-        records=wealth_records,
-        features_dir=features_dir,
-        i_j_to_example_index_map=i_j_to_example_index_map,
-        map_geometry=map_geometry,
-    )
-    # Some of the clusters might not have any images.  Just discard the
-    # prediction for these ones, don't factor it into the model.  Make
-    # sure to discard in reverse, so we don't mess up the indexing
-    # for discarding later records after discarding earlier records.
-    for i in reversed(records_to_discard):
-        del(y_wealth[i])
-    print("Now predicting wealth...")
-    wealth_model = predict(X_wealth, y_wealth, output_basename + "_wealth.pkl")
-
-    # Predict education
-    if v:
-        print("Preparing for education predictions.")
-    education_records = read_education_records(education_csv)
-    y_education = [r['education_index'] for r in education_records]
-    X_education, records_to_discard = get_features_for_clusters(
-        records=education_records,
-        features_dir=features_dir,
-        i_j_to_example_index_map=i_j_to_example_index_map,
-        map_geometry=map_geometry,
-    )
-    for i in reversed(records_to_discard):
-        del(y_education[i])
-    print("Now predicting education...")
-    education_model = predict(X_education, y_education, output_basename + "_education.pkl")
-        
-    # Predict Water
-    if v:
-        print("Preparing for water predictions.")
-    water_records = read_water_records(water_csv)
-    y_water = [r['water_index'] for r in water_records]
-    X_water, records_to_discard = get_features_for_clusters(
-        records=water_records,
-        features_dir=features_dir,
-        i_j_to_example_index_map=i_j_to_example_index_map,
-        map_geometry=map_geometry,
-    )
-    for i in reversed(records_to_discard):
-        del(y_water[i])
-    print("Now predicting water...")
-    water_model = predict(X_water, y_water, output_basename + "_water.pkl")
