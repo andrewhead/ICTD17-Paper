@@ -136,6 +136,13 @@ def predict(features, y, Xtest, ytest, output_filename):
     return ridge
 
 
+def get_random_seeds():
+    # Make sure that every time we get these seeds for splitting, they
+    # have the same values.
+    np.random.seed(443352346)
+    return np.random.randint(0, 2**32 - 1, size=100).tolist()
+
+
 def train_development(features_dir, wealth_csv, education_csv, water_csv,
     nightlights_csv, nightlights_raster, output_basename, v):
 
@@ -163,12 +170,13 @@ def train_development(features_dir, wealth_csv, education_csv, water_csv,
     # for discarding later records after discarding earlier records.
     for i in reversed(records_to_discard):
         del(y_wealth[i])
-    X_wealth_train, X_wealth_test, y_wealth_train, y_wealth_test = (
-        train_test_split(X_wealth, y_wealth, test_size=0.25, random_state=None))
-    print("Now predicting wealth...")
-    wealth_model = predict(X_wealth_train, y_wealth_train,
-        X_wealth_test, y_wealth_test,
-        args.output_basename + "_wealth.pkl")
+    for split_seed in get_random_seeds():
+        X_wealth_train, X_wealth_test, y_wealth_train, y_wealth_test = (
+            train_test_split(X_wealth, y_wealth, test_size=0.25, random_state=split_seed))
+        print("Now predicting wealth...")
+        wealth_model = predict(X_wealth_train, y_wealth_train,
+            X_wealth_test, y_wealth_test,
+            args.output_basename + "_wealth.pkl")
 
     # Predict education
     if v:
@@ -183,12 +191,13 @@ def train_development(features_dir, wealth_csv, education_csv, water_csv,
     )
     for i in reversed(records_to_discard):
         del(y_education[i])
-    X_education_train, X_education_test, y_education_train, y_education_test = (
-        train_test_split(X_education, y_education, test_size=0.25, random_state=None))
-    print("Now predicting education...")
-    education_model = predict(X_education_train, y_education_train,
-        X_education_test, y_education_test,
-        args.output_basename + "_education.pkl")
+    for split_seed in get_random_seeds():
+        X_education_train, X_education_test, y_education_train, y_education_test = (
+            train_test_split(X_education, y_education, test_size=0.25, random_state=split_seed))
+        print("Now predicting education...")
+        education_model = predict(X_education_train, y_education_train,
+            X_education_test, y_education_test,
+            args.output_basename + "_education.pkl")
         
     # Predict Water
     if v:
@@ -203,12 +212,13 @@ def train_development(features_dir, wealth_csv, education_csv, water_csv,
     )
     for i in reversed(records_to_discard):
         del(y_water[i])
-    X_water_train, X_water_test, y_water_train, y_water_test = (
-        train_test_split(X_water, y_water, test_size=0.25, random_state=None))
-    print("Now predicting water...")
-    water_model = predict(X_water_train, y_water_train,
-        X_water_test, y_water_test,
-        args.output_basename + "_water.pkl")
+    for split_seed in get_random_seeds():
+        X_water_train, X_water_test, y_water_train, y_water_test = (
+            train_test_split(X_water, y_water, test_size=0.25, random_state=split_seed))
+        print("Now predicting water...")
+        water_model = predict(X_water_train, y_water_train,
+            X_water_test, y_water_test,
+            args.output_basename + "_water.pkl")
 
 
 if __name__ == '__main__':
