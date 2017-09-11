@@ -39,27 +39,33 @@ if __name__ == "__main__":
             cluster_example_indexes.add(int(line.strip()))
 
     # For each hyper-parameter setting...
-    for learning_rate in [.00001, .0001, .001, .01]:
-        for batch_size in [128, 64, 32, 16, 8]:
-            print("Fine tuning with learning rate", learning_rate, "and batch size", batch_size)
+    # skip = True
+    for learning_rate in [.001, .0001, .00001, .000001]:
+        for momentum in [0, .5, .9, .99]:
+            # if batch_size == 8 and learning_rate == .001:
+            #     skip = False
+            # if skip:
+            #     continue
+            print("Fine tuning with learning rate", learning_rate, "and momentum", momentum)
             try:
                 # Fine-tune the model
                 final_model_path = train(
                     args.features_dir,
                     args.top_model,
                     labels,
-                    batch_size,
+                    32,
                     learning_rate,
-                    0.9,
+                    momentum,
                     50,
                     args.training_indexes_file,
                     args.validation_indexes_file,
-                    True
+                    True,
+                    0, # no patience for higher validation loss
                 )
             except Exception as e:
                 # If something went wrong, just skip these hyperparameters.
                 print("Some exception occurred", e)
-                print("This was for hyperparameters lr", learning_rate, "batch size", batch_size)
+                print("This was for hyperparameters lr", learning_rate, "momentum", momentum)
                 print("Moving on to the next one")
                 continue
    
@@ -69,7 +75,7 @@ if __name__ == "__main__":
 
             # Extract features from the final layer (to use for predictions)
             print("Extracting final layer features for model", flattened_name)
-            output_features_dir = os.path.join("features", "haiti_revamp_vgg16_conv7_flattened_" + str(batch_size) + "_" + str(learning_rate))
+            output_features_dir = os.path.join("features", "haiti_revamp_vgg16_conv7_flattened_" + str(momentum) + "_" + str(learning_rate))
             extract_features(
                 model_path=flattened_name,
                 input_dir=os.path.join("features", "haiti_revamp_vgg16_block4_pool"),
@@ -89,6 +95,6 @@ if __name__ == "__main__":
                 os.path.join("csv", "haiti_cluster_avg_water_nightlights.csv"),
                 os.path.join("csv", "haiti_TL.csv"),
                 os.path.join("nightlights", "F182010.v4d_web.stable_lights.avg_vis.tif"),
-                os.path.join("models", "indexes", "haiti_revamp_vgg16_tuned_" + str(batch_size) + "_" + str(learning_rate)),
+                os.path.join("models", "indexes", "haiti_revamp_vgg16_tuned_" + str(momentum) + "_" + str(learning_rate)),
                 True,
             )

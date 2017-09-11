@@ -1,5 +1,6 @@
 import keras
 from keras import backend as K
+from keras import regularizers
 from keras.callbacks import EarlyStopping, ModelCheckpoint, Callback
 from keras.models import Sequential, load_model
 from keras.layers.convolutional import Conv2D
@@ -13,7 +14,7 @@ from time import gmtime, strftime
 import os.path
 
 from util.load_data import load_labels, load_test_indexes
-from util.sample import FeatureExampleGenerator
+from util.sample import FeatureExampleGenerator, sample_by_class
 
 
 BLOCK5_WEIGHTS = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.1/vgg16_weights_tf_dim_ordering_tf_kernels_notop.h5'
@@ -35,7 +36,7 @@ class StopIfValLossStationary(Callback):
 
 def train(features_dir, top_model_filename, labels, batch_size,
         learning_rate, momentum, epochs, training_indexes_filename,
-        validation_indexes_filename, verbose=False, num_classes=3):
+        validation_indexes_filename, verbose=False, num_classes=3, patience=1):
 
     START_TIMESTAMP = strftime("%Y%m%d-%H%M%S", gmtime())
 
@@ -53,26 +54,29 @@ def train(features_dir, top_model_filename, labels, batch_size,
         name='block5_conv1',
         # Hard-coded input size.  This is the output size of `block4_pool` when
         # the input images are 400x400.
-        input_shape=(25, 25, 512)
+        input_shape=(25, 25, 512),
+        kernel_regularizer=regularizers.l2(5e-4),
     ))
     model.add(Conv2D(
         filters=512,
         kernel_size=(3, 3),
         activation='relu',
         padding='same',
-        name='block5_conv2'
+        name='block5_conv2',
+        kernel_regularizer=regularizers.l2(5e-4),
     ))
     model.add(Conv2D(
         filters=512,
         kernel_size=(3, 3),
         activation='relu',
         padding='same',
-        name='block5_conv3'
+        name='block5_conv3',
+        kernel_regularizer=regularizers.l2(5e-4),
     ))
     model.add(MaxPooling2D(
         pool_size=(2, 2),
         strides=(2, 2),
-        name='block5_pool'
+        name='block5_pool',
     ))
 
     if verbose:
@@ -114,14 +118,28 @@ def train(features_dir, top_model_filename, labels, batch_size,
         print("done.")
 
     # Load training and validation indexes from file
-    training_examples = []
-    validation_examples = []
+    training_examples_base = []
+    validation_examples_base = []
     with open(training_indexes_filename) as training_indexes_file:
         for line in training_indexes_file:
-            training_examples.append(int(line.strip()))
+            training_examples_base.append(int(line.strip()))
     with open(validation_indexes_filename) as validation_indexes_file:
         for line in validation_indexes_file:
-            validation_examples.append(int(line.strip()))
+            validation_examples_base.append(int(line.strip()))
+
+    # Upsample the training and validation sets to have equal representation
+    # of all of the classes.
+    count_training_0_labels = 0
+    for example in training_examples_base:
+        if labels[example] == '0':
+            count_training_0_labels += 1
+    count_validation_0_labels = 0
+    for example in validation_examples_base:
+        if labels[example] == '0':
+            count_validation_0_labels += 1
+    
+    training_examples = sample_by_class(training_examples_base, labels, count_training_0_labels)
+    validation_examples = sample_by_class(validation_examples_base, labels, count_validation_0_labels)
 
     # Convert labels to one-hot array for use in training.
     label_array = keras.utils.to_categorical(labels, num_classes)
@@ -149,7 +167,7 @@ def train(features_dir, top_model_filename, labels, batch_size,
             validation_steps=math.ceil(float(len(validation_examples)) / batch_size),
             # validation_steps=1,
             callbacks=[
-                EarlyStopping(monitor='val_loss', patience=1),
+                EarlyStopping(monitor='val_loss', patience=patience),
                 ModelCheckpoint(
                     get_best_model_filename(learning_rate, START_TIMESTAMP),
                     save_best_only=True,
@@ -190,7 +208,7 @@ def train(features_dir, top_model_filename, labels, batch_size,
 
     final_filename = os.path.join(
         "models",
-        "tuned-finished.bs" + str(batch_size) + ".slr-" + str(start_learning_rate) + ".h5"
+        "tuned-finished.bs" + str(momentum) + ".slr-" + str(start_learning_rate) + ".h5"
     )
     model.save(final_filename)
     return final_filename
