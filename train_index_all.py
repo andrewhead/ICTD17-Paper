@@ -130,8 +130,8 @@ def predict(features, y, Xtest, ytest, output_filename):
         print("Test best score:", ridge.score(Xtest, ytest))
 
     # Retrain the model on all training data, and dump it to a file for later
-    print("Saving trained model to file ", output_filename)
-    joblib.dump(ridge, output_filename)
+    # print("Saving trained model to file ", output_filename)
+    # joblib.dump(ridge, output_filename)
 
     return ridge
 
@@ -140,7 +140,7 @@ def get_random_seeds():
     # Make sure that every time we get these seeds for splitting, they
     # have the same values.
     np.random.seed(443352346)
-    return np.random.randint(0, 2**32 - 1, size=100).tolist()
+    return np.random.randint(0, 2**32 - 1, size=10).tolist()
 
 
 def train_development(features_dir, wealth_csv, education_csv, water_csv,
@@ -156,11 +156,11 @@ def train_development(features_dir, wealth_csv, education_csv, water_csv,
     # Predict wealth
     if v:
         print("Preparing for wealth predictions.")
-    wealth_records = read_wealth_records(args.wealth_csv)
+    wealth_records = read_wealth_records(wealth_csv)
     y_wealth = [r['wealth'] for r in wealth_records]
     X_wealth, records_to_discard = get_features_for_clusters(
         records=wealth_records,
-        features_dir=args.features_dir,
+        features_dir=features_dir,
         i_j_to_example_index_map=i_j_to_example_index_map,
         map_geometry=map_geometry,
     )
@@ -176,7 +176,7 @@ def train_development(features_dir, wealth_csv, education_csv, water_csv,
         print("Now predicting wealth...")
         wealth_model = predict(X_wealth_train, y_wealth_train,
             X_wealth_test, y_wealth_test,
-            args.output_basename + "_wealth.pkl")
+            output_basename + "_" + str(split_seed) + "_wealth.pkl")
 
     # Predict education
     if v:
@@ -197,7 +197,7 @@ def train_development(features_dir, wealth_csv, education_csv, water_csv,
         print("Now predicting education...")
         education_model = predict(X_education_train, y_education_train,
             X_education_test, y_education_test,
-            args.output_basename + "_education.pkl")
+            output_basename + "_" + str(split_seed) + "_education.pkl")
         
     # Predict Water
     if v:
@@ -218,7 +218,7 @@ def train_development(features_dir, wealth_csv, education_csv, water_csv,
         print("Now predicting water...")
         water_model = predict(X_water_train, y_water_train,
             X_water_test, y_water_test,
-            args.output_basename + "_water.pkl")
+            output_basename + "_" + str(split_seed) + "_water.pkl")
 
 
 if __name__ == '__main__':
