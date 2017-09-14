@@ -25,6 +25,31 @@ def load_test_indexes(test_index_filename):
     return test_indexes
 
 
+def read_records(csv_path, metric_column):
+    records = []
+    with open(csv_path) as csv_file:
+        csv_reader = csv.DictReader(csv_file)
+        for row in csv_reader:
+            # We have inconsistent file formats for wealth
+            if metric_column == "wealth" and "wealth_index" in row:
+                row['wealth'] = float(row['wealth_index'])
+                row['i'] = int(row['xcoord'].replace(".0", ""))
+                row['j'] = int(row['ycoord'].replace(".0", ""))
+            elif metric_column == "wealth":
+                row['latitude'] = float(row['LATNUM'])
+                row['longitude'] = float(row['LONGNUM'])
+            # And a unique file format for education and water
+            elif metric_column in ["avg_educ_index", "avg_water_index"]:
+                row['i'] = int(row['xcoord'].replace(".0", ""))
+                row['j'] = int(row['ycoord'].replace(".0", ""))
+            # Though the rest have a consistent format
+            else:
+                row['longitude'] = float(row['xcoord'])
+                row['latitude'] = float(row['ycoord'])
+            records.append(row)
+    return records
+
+
 def read_wealth_records(csv_path):
 
     records = []
