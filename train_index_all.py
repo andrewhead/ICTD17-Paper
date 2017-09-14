@@ -13,8 +13,7 @@ from sklearn.model_selection import cross_val_predict, cross_val_score
 from sklearn.externals import joblib
 
 from util.geometry import MapGeometry
-from util.load_data import read_wealth_records, read_education_records,\
-    read_water_records, get_map_from_i_j_to_example_index
+from util.load_data import read_records, get_map_from_i_j_to_example_index
 
 
 def get_features_for_clusters(records, features_dir, i_j_to_example_index_map, map_geometry):
@@ -83,7 +82,7 @@ def get_features_for_clusters(records, features_dir, i_j_to_example_index_map, m
     return avg_features, records_without_any_images
 
 
-def predict(features, y, Xtest, ytest, output_filename):
+def predict(features, y, Xtest, ytest):
     # This method assumes you have already split the data into
     # test data and training data, and are only passing in training data.
     features = np.array(features)
@@ -143,8 +142,41 @@ def get_random_seeds():
     return np.random.randint(0, 2**32 - 1, size=10).tolist()
 
 
-def train_development(features_dir, wealth_csv, education_csv, water_csv,
-    nightlights_csv, nightlights_raster, output_basename, v):
+def do_predictions_for(features_dir, csv, metric_name, metric_column,
+    i_j_to_example_index_map, map_geometry, v): 
+
+    if v:
+        print("Preparing for", metric_name, "predictions.")
+
+    try:
+        records = read_records(csv, metric_column)
+    except:
+        print("Error: couldn't load CSV file", csv, ", skipping metric.")
+        return
+
+    y = [float(r[metric_column]) for r in records]
+    X, records_to_discard = get_features_for_clusters(
+        records=records,
+        features_dir=features_dir,
+        i_j_to_example_index_map=i_j_to_example_index_map,
+        map_geometry=map_geometry,
+    )
+
+    # Some of the clusters might not have any images.  Just discard the
+    # prediction for these ones, don't factor it into the model.  Make
+    # sure to discard in reverse, so we don't mess up the indexing
+    # for discarding later records after discarding earlier records.
+    for i in reversed(records_to_discard):
+        del(y[i])
+
+    for split_seed in get_random_seeds():
+        X_train, X_test, y_train, y_test = (
+            train_test_split(X, y, test_size=0.25, random_state=split_seed))
+        print("Now predicting", metric_name, "...")
+        wealth_model = predict(X_train, y_train, X_test, y_test)
+
+
+def train_development(features_dir, country_name, nightlights_csv, nightlights_raster, v):
 
     if v:
         print("Loading map geometry...", end="")
@@ -153,72 +185,23 @@ def train_development(features_dir, wealth_csv, education_csv, water_csv,
         print(".")
     i_j_to_example_index_map = get_map_from_i_j_to_example_index(nightlights_csv)
  
-    # Predict wealth
-    if v:
-        print("Preparing for wealth predictions.")
-    wealth_records = read_wealth_records(wealth_csv)
-    y_wealth = [r['wealth'] for r in wealth_records]
-    X_wealth, records_to_discard = get_features_for_clusters(
-        records=wealth_records,
-        features_dir=features_dir,
-        i_j_to_example_index_map=i_j_to_example_index_map,
-        map_geometry=map_geometry,
-    )
-    # Some of the clusters might not have any images.  Just discard the
-    # prediction for these ones, don't factor it into the model.  Make
-    # sure to discard in reverse, so we don't mess up the indexing
-    # for discarding later records after discarding earlier records.
-    for i in reversed(records_to_discard):
-        del(y_wealth[i])
-    for split_seed in get_random_seeds():
-        X_wealth_train, X_wealth_test, y_wealth_train, y_wealth_test = (
-            train_test_split(X_wealth, y_wealth, test_size=0.25, random_state=split_seed))
-        print("Now predicting wealth...")
-        wealth_model = predict(X_wealth_train, y_wealth_train,
-            X_wealth_test, y_wealth_test,
-            output_basename + "_" + str(split_seed) + "_wealth.pkl")
+    csv_file = lambda basename: os.path.join("csv", country_name + "_" + basename + ".csv")
 
-    # Predict education
-    if v:
-        print("Preparing for education predictions.")
-    education_records = read_education_records(education_csv)
-    y_education = [r['education_index'] for r in education_records]
-    X_education, records_to_discard = get_features_for_clusters(
-        records=education_records,
-        features_dir=features_dir,
-        i_j_to_example_index_map=i_j_to_example_index_map,
-        map_geometry=map_geometry,
-    )
-    for i in reversed(records_to_discard):
-        del(y_education[i])
-    for split_seed in get_random_seeds():
-        X_education_train, X_education_test, y_education_train, y_education_test = (
-            train_test_split(X_education, y_education, test_size=0.25, random_state=split_seed))
-        print("Now predicting education...")
-        education_model = predict(X_education_train, y_education_train,
-            X_education_test, y_education_test,
-            output_basename + "_" + str(split_seed) + "_education.pkl")
-        
-    # Predict Water
-    if v:
-        print("Preparing for water predictions.")
-    water_records = read_water_records(water_csv)
-    y_water = [r['water_index'] for r in water_records]
-    X_water, records_to_discard = get_features_for_clusters(
-        records=water_records,
-        features_dir=features_dir,
-        i_j_to_example_index_map=i_j_to_example_index_map,
-        map_geometry=map_geometry,
-    )
-    for i in reversed(records_to_discard):
-        del(y_water[i])
-    for split_seed in get_random_seeds():
-        X_water_train, X_water_test, y_water_train, y_water_test = (
-            train_test_split(X_water, y_water, test_size=0.25, random_state=split_seed))
-        print("Now predicting water...")
-        water_model = predict(X_water_train, y_water_train,
-            X_water_test, y_water_test,
-            output_basename + "_" + str(split_seed) + "_water.pkl")
+    def run_predictions(csv, metric_name, metric_column):
+        do_predictions_for(features_dir, csv, metric_name, metric_column,
+            i_j_to_example_index_map, map_geometry, v)
+
+    run_predictions(csv_file("DHS_wealth"), "wealth", "wealth")
+    run_predictions(csv_file("cluster_avg_educ_nightlights"), "education", "avg_educ_index")
+    run_predictions(csv_file("cluster_avg_water_nightlights"), "water", "avg_water_index")
+    run_predictions(csv_file("height_4_age"), "child height percentile", "height_4_age")
+    run_predictions(csv_file("weight_4_age"), "child weight percentile", "weight_4_age")
+    run_predictions(csv_file("weight_4_height"), "child weight / height percentile", "weight_4_height")
+    run_predictions(csv_file("female_bmi"), "female BMI", "female_bmi")
+    run_predictions(csv_file("bed_net_num"), "bed net count", "bed_net_num")
+    run_predictions(csv_file("hemoglobin"), "hemoglobin level", "hemoglobin")
+    run_predictions(csv_file("electricity"), "electricity", "electricity")
+    run_predictions(csv_file("mobile"), "mobile phone ownership", "mobile")
 
 
 if __name__ == '__main__':
@@ -227,15 +210,7 @@ if __name__ == '__main__':
         "wealth, water and education indexes from arbitrary features")
     parser.add_argument("features_dir", help="directory containing features, " +
         "with one file containing a flat numpy array (.npz) per image")
-    parser.add_argument("wealth_csv", help="CSV file where " +
-        "the top row is a header, col 1 (zero-indexed) is the wealth index, " +
-        "col 7 is the latitude, and col 8 is the longitude.")
-    parser.add_argument("education_csv", help="CSV file where " +
-        "the top row is a header, col 3 (zero-indexed) is the education index, " +
-        "col 1 is the cell's 'i' coordinate, and col 2 is the 'j' coordinate.")
-    parser.add_argument("water_csv", help="CSV file where " +
-        "the top row is a header, col 4 (zero-indexed) is the water index, " +
-        "col 2 is the cell's 'i' coordinate, and col 3 is the 'j' coordinate.")
+    parser.add_argument("country_name", help="lower case")
     parser.add_argument("nightlights_csv", help="CSV file where " +
         "the top row is a header, col 0 (zero-indexed) is the index of the " +
         "example (basename of eature file), and cols 2 and 3 are the " +
@@ -243,21 +218,13 @@ if __name__ == '__main__':
     parser.add_argument("nightlights_raster", help="Raster file of " +
         "nightlights, used for making a map from latitude and longitude " +
         "to cell indexes on the map.")
-    parser.add_argument("--prediction-output-basename",
-        help="If you're running test results, set this flag and you can " +
-        "output the test predictions to file")
-    parser.add_argument("output_basename", help="Basename of files to which " +
-        "to output the created models.")
     parser.add_argument("-v", action="store_true", help="verbose")
     args = parser.parse_args()
 
     train_development(
         args.features_dir,
-        args.wealth_csv,
-        args.education_csv,
-        args.water_csv,
+        args.country_name,
         args.nightlights_csv,
         args.nightlights_raster,
-        args.output_basename,
         args.v,
     )
