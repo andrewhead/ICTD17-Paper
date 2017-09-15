@@ -94,7 +94,7 @@ def predict(features, y): #, Xtest, ytest):
 
     best_alpha_overall = -1
     best_score_overall = -1
-    for i, (train_index, val_index) in enumerate(KFold(n_splits=5).split(features)):
+    for i, (train_index, val_index) in enumerate(KFold(n_splits=5, shuffle=True, random_state=443352346).split(features)):
 
         print("On fold", i)
         Xtrain = features[train_index]
