@@ -148,7 +148,8 @@ def do_predictions_for(features_dir, csv, metric_name, metric_column,
 
     try:
         records = read_records(csv, metric_column)
-    except:
+    except Exception as e:
+        print(e)
         print("Error: couldn't load CSV file", csv, ", skipping metric.")
         return
 
@@ -189,17 +190,17 @@ def train_development(features_dir, country_name, nightlights_csv, nightlights_r
         do_predictions_for(features_dir, csv, metric_name, metric_column,
             i_j_to_example_index_map, map_geometry, v)
 
-    run_predictions(csv_file("DHS_wealth"), "wealth", "wealth")
-    run_predictions(csv_file("cluster_avg_educ_nightlights"), "education", "avg_educ_index")
-    run_predictions(csv_file("cluster_avg_water_nightlights"), "water", "avg_water_index")
-    run_predictions(csv_file("height_4_age"), "child height percentile", "height_4_age")
-    run_predictions(csv_file("weight_4_age"), "child weight percentile", "weight_4_age")
-    run_predictions(csv_file("weight_4_height"), "child weight / height percentile", "weight_4_height")
-    run_predictions(csv_file("female_bmi"), "female BMI", "female_bmi")
-    run_predictions(csv_file("bed_net_num"), "bed net count", "bed_net_num")
-    run_predictions(csv_file("hemoglobin"), "hemoglobin level", "hemoglobin")
-    run_predictions(csv_file("electricity"), "electricity", "electricity")
-    run_predictions(csv_file("mobile"), "mobile phone ownership", "mobile")
+    # run_predictions(csv_file("DHS_wealth"), "wealth", "wealth")
+    # run_predictions(csv_file("cluster_avg_educ_nightlights"), "education", "avg_educ_index")
+    run_predictions(csv_file("cluster_avg_water_nightlights"), "water", "water")
+    # run_predictions(csv_file("height_4_age"), "child height percentile", "height_4_age")
+    # run_predictions(csv_file("weight_4_age"), "child weight percentile", "weight_4_age")
+    # run_predictions(csv_file("weight_4_height"), "child weight / height percentile", "weight_4_height")
+    # run_predictions(csv_file("female_bmi"), "female BMI", "female_bmi")
+    # run_predictions(csv_file("bed_net_num"), "bed net count", "bed_net_num")
+    # run_predictions(csv_file("hemoglobin"), "hemoglobin level", "hemoglobin")
+    # run_predictions(csv_file("electricity"), "electricity", "electricity")
+    # run_predictions(csv_file("mobile"), "mobile phone ownership", "mobile")
 
 
 if __name__ == '__main__':
