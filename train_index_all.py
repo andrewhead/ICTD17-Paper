@@ -7,7 +7,7 @@ import numpy as np
 import os.path
 from tqdm import tqdm
 
-from sklearn.linear_model import Ridge
+from sklearn.linear_model import Ridge, RidgeCV
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import cross_val_predict, cross_val_score
 from sklearn.externals import joblib
@@ -82,16 +82,18 @@ def get_features_for_clusters(records, features_dir, i_j_to_example_index_map, m
     return avg_features, records_without_any_images
 
 
-def predict(features, y, Xtest, ytest):
+def predict(features, y): #, Xtest, ytest):
     # This method assumes you have already split the data into
     # test data and training data, and are only passing in training data.
     features = np.array(features)
     y = np.array(y)
-    Xtest = np.array(Xtest)
-    ytest = np.array(ytest)
+    # Xtest = np.array(Xtest)
+    # ytest = np.array(ytest)
 
     from sklearn.model_selection import KFold
 
+    best_alpha_overall = -1
+    best_score_overall = -1
     for i, (train_index, val_index) in enumerate(KFold(n_splits=5).split(features)):
 
         print("On fold", i)
@@ -100,33 +102,22 @@ def predict(features, y, Xtest, ytest):
         Xval = features[val_index]
         yval = y[val_index]
 
-        # Discover best regularsization parameter for this fold
-        best_score = -100
-        best_alpha = -1
-        for alpha in np.logspace(-3, 5, 50, base=10):
-            ridge = Ridge(alpha=alpha)
-            ridge.fit(Xtrain, ytrain)
-            score = ridge.score(Xval, yval)
-            if score > best_score:
-                best_alpha = alpha
-                best_score = score
-        print("Stage I best score", best_score, "for alpha", best_alpha)
+        # Discover best regularization parameter for this fold
+        model = RidgeCV(alphas=np.logspace(-3, 5, 50, base=10), cv=5)
+        model.fit(Xtrain, ytrain)
+        best_alpha = model.alpha_
+        print("Stage I best alpha", best_alpha)
 
-        tuned_score = -100
-        tuned_alpha = -1
-        for alpha in np.logspace(np.log10(best_alpha / 2), np.log10(best_alpha * 2), 50, base=10):
-            ridge = Ridge(alpha=alpha)
-            ridge.fit(Xtrain, ytrain)
-            score = ridge.score(Xval, yval)
-            if score > tuned_score:
-                tuned_alpha = alpha
-                tuned_score = score
-        print("Stage II best score", tuned_score, "for alpha", tuned_alpha)
+        model = RidgeCV(alphas=np.logspace(np.log10(best_alpha / 2), np.log10(best_alpha * 2), 50, base=10), cv=5)
+        model.fit(Xtrain, ytrain)
+        tuned_alpha = model.alpha_
+        print("Stage II best alpha", tuned_alpha)
 
         # Run on the hold-out test set
         ridge = Ridge(alpha=tuned_alpha)
-        ridge.fit(features, y)
-        print("Test best score:", ridge.score(Xtest, ytest))
+        ridge.fit(Xtrain, ytrain)
+        # score = ridge.score(Xval, yval)
+        print("Test best score:", ridge.score(Xval, yval))
 
     # Retrain the model on all training data, and dump it to a file for later
     # print("Saving trained model to file ", output_filename)
@@ -169,11 +160,11 @@ def do_predictions_for(features_dir, csv, metric_name, metric_column,
     for i in reversed(records_to_discard):
         del(y[i])
 
-    for split_seed in get_random_seeds():
-        X_train, X_test, y_train, y_test = (
-            train_test_split(X, y, test_size=0.25, random_state=split_seed))
-        print("Now predicting", metric_name, "...")
-        wealth_model = predict(X_train, y_train, X_test, y_test)
+    # for split_seed in get_random_seeds():
+    # X_train, X_test, y_train, y_test = (
+    #     train_test_split(X, y, test_size=0.25, random_state=split_seed))
+    print("Now predicting", metric_name, "...")
+    wealth_model = predict(X, y)
 
 
 def train_development(features_dir, country_name, nightlights_csv, nightlights_raster, v):
