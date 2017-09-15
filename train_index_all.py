@@ -118,6 +118,13 @@ def predict(features, y): #, Xtest, ytest):
         ridge.fit(Xtrain, ytrain)
         # score = ridge.score(Xval, yval)
         print("Test best score:", ridge.score(Xval, yval))
+        # Print out predictions!
+        print("Expected")
+        for val in yval.tolist():
+            print(val)
+        print("Actual")
+        for val in ridge.predict(Xval).tolist():
+            print(val)
 
     # Retrain the model on all training data, and dump it to a file for later
     # print("Saving trained model to file ", output_filename)
