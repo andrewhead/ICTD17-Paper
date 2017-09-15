@@ -12,7 +12,7 @@ BEGIN {
 }
 /Now predicting/ {
   old_metric = metric;
-  match($0, /Now predicting ([a-z]+)\.\.\./, metric_res);
+  match($0, /Now predicting (.* )\.\.\./, metric_res);
   metric = metric_res[1];
   if (metric != old_metric) {
     test_index = -1;
