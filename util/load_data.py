@@ -39,9 +39,9 @@ def read_records(csv_path, metric_column):
                 row['latitude'] = float(row['LATNUM'])
                 row['longitude'] = float(row['LONGNUM'])
             # And a unique file format for education and water
-            elif metric_column in ["avg_educ_index"]:
-                row['i'] = int(row['xcoord'].replace(".0", ""))
-                row['j'] = int(row['ycoord'].replace(".0", ""))
+            # elif metric_column in ["avg_educ_index"]:
+            #     row['i'] = int(row['xcoord'].replace(".0", ""))
+            #     row['j'] = int(row['ycoord'].replace(".0", ""))
             # Though the rest have a consistent format
             else:
                 row['longitude'] = float(row['xcoord'])

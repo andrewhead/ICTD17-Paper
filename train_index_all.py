@@ -184,8 +184,8 @@ def train_development(features_dir, country_name, nightlights_csv, nightlights_r
             i_j_to_example_index_map, map_geometry, v)
 
     # run_predictions(csv_file("DHS_wealth"), "wealth", "wealth")
-    # run_predictions(csv_file("cluster_avg_educ_nightlights"), "education", "avg_educ_index")
-    run_predictions(csv_file("cluster_avg_water_nightlights"), "water", "water")
+    run_predictions(csv_file("cluster_avg_educ_nightlights"), "education", "education")
+    # run_predictions(csv_file("cluster_avg_water_nightlights"), "water", "water")
     # run_predictions(csv_file("height_4_age"), "child height percentile", "height_4_age")
     # run_predictions(csv_file("weight_4_age"), "child weight percentile", "weight_4_age")
     # run_predictions(csv_file("weight_4_height"), "child weight / height percentile", "weight_4_height")
